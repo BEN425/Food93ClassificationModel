@@ -1,4 +1,4 @@
-# Getting Start
+# Getting Start 
 
 Environment：
 <table>
@@ -41,7 +41,7 @@ Environment：
 
 # Database
 
-- Folder：Databases
+- Folder：Database
 - Name：AI_SingleFood_database_0310
 - Categories：93, multi-class
 - Image Count：259504
