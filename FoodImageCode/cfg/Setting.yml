@@ -1,0 +1,31 @@
+PARSER_SETTING:
+    SEED: 200
+    GPU_ID: '0'
+    WORKERS: 4
+    EPOCHS: 30
+    # EPOCHS: 1
+    BATCH_SIZE: 25
+    EVAL_BATCH_SIZE: 25
+
+TRAIN_SETTING:
+    RESUME: False
+    CHECKPOINT_PATH: '/home/msoc/ben/FoodImageCode/Results/checkpoints/3_19_ModifiedResNet50_93_epoch_12.pth.tar'
+    TEST_METRICS: True
+    # data
+    DATA_BASE_DIR  : '/home/msoc/ben/Database/AI_SingleFood_database_0310'
+    FOODSEG_DIR    : '/home/msoc/ben/Database/FoodSeg103'
+    ALL_CSV_DIR    : '/home/msoc/ben/FoodImageCode/csv/AllFoodImage.csv'
+    TRAIN_CSV_DIR  : '/home/msoc/ben/FoodImageCode/csv/AllFoodImage_train_ratio811.csv'
+    VALID_CSV_DIR  : '/home/msoc/ben/FoodImageCode/csv/AllFoodImage_valid_ratio811.csv'
+    TEST_CSV_DIR   : '/home/msoc/ben/FoodImageCode/csv/AllFoodImage_test_ratio811.csv'
+    FOODSEG_CSV_DIR: '/home/msoc/ben/Database/FoodSeg103'
+    SAVE_DIR       : '/home/msoc/ben/FoodImageCode/Results'
+    # mdoel
+    MODEL: 
+        NAME: 'ModifiedResNet50_93'
+        INCHANEELS: 3
+        OUTCHANNELS: 64
+        CATEGORY_NUM: 93
+        LR: .0001
+        MOMENTUM: 0.9
+        WEIGHT_DECAY: .0005
