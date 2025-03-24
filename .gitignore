@@ -1,0 +1,13 @@
+*.sh
+*.ipynb
+*.txt
+*.docx
+*.zip
+
+Database/
+Results/
+inference_results/
+origin_image/
+.ipynb_checkpoints/
+__pycache__/
+csv/
