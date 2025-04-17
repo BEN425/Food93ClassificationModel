@@ -4,10 +4,16 @@
 *.docx
 *.zip
 
-Database/
 Results/
 inference_results/
 origin_image/
 .ipynb_checkpoints/
 __pycache__/
 csv/
+twcc/
+zips/
+compress.py
+
+Database/*
+!Database/class.txt
+!Database/FoodSeg_cate_mapping.csv

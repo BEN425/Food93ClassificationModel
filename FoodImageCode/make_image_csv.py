@@ -24,6 +24,9 @@ train_csv_path = cfg["TRAIN_CSV_DIR"]
 test_csv_path  = cfg["TEST_CSV_DIR"]
 val_csv_path   = cfg["VALID_CSV_DIR"]
 
+# Initialize seed
+random.seed(cfg["SEED"])
+
 # Check whether a file is an image file
 def check_image(file: str) :
     filename = file.lower()

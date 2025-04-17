@@ -1,0 +1,49 @@
+almond,B3_Almond
+cashew,B3_Cashew
+peanut,B3_Peanut
+egg,F1_Egg
+apple,H1_Apple
+avocado,H1_Avocado
+banana,H1_Banana
+strawberry,H1_Strawberry
+cherry,H1_Cherry
+blueberry,H1_Blueberry
+mango,H1_Mango
+peach,H1_Peach
+pear,H1_Pear
+pineapple,H1_Pineapple
+grape,H1_Grape
+kiwi,H1_Kiwi
+melon,H1_Melon
+orange,H1_Orange
+watermelon,H1_Watermelon
+steak,D2_Beef
+pork,D1_Pork,D1_Pork Products
+chicken duck,C1_Chicken,C2_Duck
+sausage,D1_Pork Products
+lamb,D3_Mutton
+fish,E1_E2_ Fish
+shellfish,E4_Shellfish
+shrimp,E4_Shrimp
+corn,A3_Corn
+pasta,A2_Noodle
+noodles,A2_Noodle
+rice,A1_Rice
+tofu,F3_Tofu
+eggplant,G4_Eggplant
+potato,A3_Potato
+cauliflower,G1_Cauliflower
+tomato,G4_Tomatoes
+lettuce,G1_Lettuce
+cucumber,G4_Cucumber
+white radish,G2_Radish
+carrot,G1_Carrots
+asparagus,G3_Asparagus
+celery stick,G2_Celery
+snow peas,G5_Pea
+cabbage,G2_Cabbage
+bean sprouts,G2_Bean Sprouts
+onion,G2_Onions
+king oyster mushroom,G6_King Oyster Mushrooms
+shiitake,G6_Shiitake Mushrooms
+enoki mushroom,G6_Enoki Mushrooms

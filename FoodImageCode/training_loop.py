@@ -16,8 +16,8 @@ from rich.progress import track
 
 from ema_pytorch import EMA
 
-from loss import cal_loss, cal_l2_regularization, cal_focal_loss
-from metrics import cal_f1_score_acc, evaluate_valid_dataset, evaluate_valid_dataset_new, cal_ham_zero_acc
+from loss import cal_loss, cal_l2_regularization, cal_focal_loss, cal_class_focal_loss
+from metrics import cal_f1_score_acc, evaluate_valid_dataset, evaluate_valid_dataset_new, cal_ham_zero_acc, evaluate_valid_dataset_new2
 
 from rich import get_console
 console = get_console()
@@ -49,7 +49,9 @@ class Trainer():
         
         self.train_dataloader = dataset["train"]
         self.valid_dataloader = dataset["valid"]
+        self.class_num = cfg["MODEL"]["CATEGORY_NUM"]
         self.model = model
+        self.cfg = cfg
         self.opt = opt
         self.device = device
         self.ema = EMA(self.model)
@@ -109,14 +111,14 @@ class Trainer():
                 enumerate(self.train_dataloader), total=total
             ):
                 
-                img, label = img.to(self.device), label.to(self.device)
+                img, label = img.to(self.device), label.to(self.device).to(torch.float32)
                 
                 #? Use sigmoid for multi-label classification
                 logits = torch.sigmoid(self.model(img))
                 # Loss
                 bce_loss = cal_loss(logits, label)
-                l2_reg = cal_l2_regularization(self.model)
-                total_loss = bce_loss + l2_reg
+                # l2_reg = cal_l2_regularization(self.model)
+                total_loss = bce_loss
                 # Metrics
                 train_metrics_results = cal_f1_score_acc(logits, label)
 
@@ -129,7 +131,7 @@ class Trainer():
                 # Record each iter loss
                 record_dict["train_total_loss"] += total_loss.item()
                 record_dict["train_bce_loss"]   += bce_loss.item()
-                record_dict["train_l2_reg"]     += l2_reg.item()
+                # record_dict["train_l2_reg"]     += l2_reg.item()
                 record_dict["train_microf1"]    += train_metrics_results["microf1"]
                 record_dict["train_macrof1"]    += train_metrics_results["macrof1"]
                 record_dict["train_micro_acc"]  += train_metrics_results["micro_acc"]
@@ -137,7 +139,7 @@ class Trainer():
             # Record each epoch loss
             record_dict["train_total_loss"] /= len(self.train_dataloader)
             record_dict["train_bce_loss"]   /= len(self.train_dataloader)
-            record_dict["train_l2_reg"]     /= len(self.train_dataloader)
+            # record_dict["train_l2_reg"]     /= len(self.train_dataloader)
             record_dict["train_microf1"]    /= len(self.train_dataloader)
             record_dict["train_macrof1"]    /= len(self.train_dataloader)
             record_dict["train_micro_acc"]  /= len(self.train_dataloader)
@@ -174,6 +176,11 @@ class Trainer():
         # Calculate progress bar
         batch_size = cfg["BATCH_SIZE"]
         total = len(self.train_dataloader.dataset) / batch_size
+                
+        # Calculate class frequencies for focal loss parameter ɑ
+        console.print("Calculating class frequencies...")
+        cls_freq = self._load_class_frequency().to(self.device)
+        console.print(cls_freq)
         
         for epoch in range(start_epoch, end_epoch):
             console.print( "====================")
@@ -205,7 +212,9 @@ class Trainer():
                 pred = torch.round(logits_sigmoid) # Threshold = 0.5
                 
                 # Loss
-                focal_loss = cal_focal_loss(logits, label) # focal loss implicitly applies sigmoid
+                #? focal loss implicitly applies sigmoid
+                # focal_loss = cal_focal_loss(logits, label)
+                focal_loss = cal_class_focal_loss(logits, label, cls_freq)
                 total_loss = focal_loss
                 # Metrics
                 train_metrics_results = cal_f1_score_acc(logits_sigmoid, label)
@@ -237,9 +246,15 @@ class Trainer():
 
             # Evaluate validation set
             if cfg["TEST_METRICS"]:
-                valid_results = evaluate_valid_dataset_new(
+                # valid_results = evaluate_valid_dataset_new(
+                #     self.model, 
+                #     self.valid_dataloader, 
+                #     self.device
+                # )
+                valid_results = evaluate_valid_dataset_new2(
                     self.model, 
-                    self.valid_dataloader, 
+                    self.valid_dataloader,
+                    cls_freq,
                     self.device
                 )
                 for key, value in valid_results.items():
@@ -269,3 +284,12 @@ class Trainer():
             checkpoint_name
         )
         console.print(f"Saved checkpoint: \"{checkpoint_name}\"")
+
+    def _load_class_frequency(self) :
+        cls_freq = torch.zeros(self.class_num)
+        
+        with open(os.path.join(self.cfg["DATA_BASE_DIR"], "..", "class_freq.txt"), "r") as f:
+            for i, line in enumerate(f.readlines()) :
+                cls_freq[i] = float(line)
+        
+        return cls_freq

@@ -20,6 +20,8 @@ console = get_console()
 ### Main Function ###
 
 def main(cfg: "dict[str, int|bool|float|str]"):
+    console.print("Loading model and datasets...")
+    
     device = torch.device(f"cuda:{cfg['GPU_ID']}") 
     
     init_seed(cfg["SEED"])
@@ -44,6 +46,7 @@ def init_seed(seed: int, cuda_deterministic=True):
 
 # Load ResNet50 model
 def load_model(cfg):
+    
     model = ModifiedResNet(3, 64, cfg["MODEL"]["CATEGORY_NUM"])
     pretrained_resnet = models.resnet50(pretrained=True)
 
@@ -117,10 +120,12 @@ def resume_setting(checkpoint_dir, model, opt, start_epoch, end_epoch):
     return model, opt, start_epoch, end_epoch
 
 if __name__ == "__main__":
+    
+    console.print("Parsing config...")
 
     try :
         cfgparser = CfgParser(config_path="./cfg/Setting.yml")
         cfg = cfgparser.cfg_dict
         main(cfg)
     except Exception :
-        console.print_exception(show_locals=False)
+        console.print_exception(show_locals=True)

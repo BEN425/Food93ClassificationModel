@@ -9,7 +9,7 @@ PARSER_SETTING:
 
 TRAIN_SETTING:
     RESUME: False
-    CHECKPOINT_PATH: '/home/msoc/ben/FoodImageCode/Results/checkpoints/3_19_ModifiedResNet50_93_epoch_12.pth.tar'
+    CHECKPOINT_PATH: '/home/msoc/ben/FoodImageCode/Results/checkpoints/3_21 focal adam/3_21_ModifiedResNet50_93_epoch_29.pth.tar'
     TEST_METRICS: True
     # data
     DATA_BASE_DIR  : '/home/msoc/ben/Database/AI_SingleFood_database_0310'
@@ -26,6 +26,7 @@ TRAIN_SETTING:
         INCHANEELS: 3
         OUTCHANNELS: 64
         CATEGORY_NUM: 93
+        # LR: .001
         LR: .0001
         MOMENTUM: 0.9
         WEIGHT_DECAY: .0005
