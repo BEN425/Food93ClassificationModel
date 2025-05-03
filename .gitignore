@@ -12,8 +12,10 @@ __pycache__/
 csv/
 twcc/
 zips/
+image/
 compress.py
 
 Database/*
 !Database/class.txt
+!Database/id_mapping.csv
 !Database/FoodSeg_cate_mapping.csv

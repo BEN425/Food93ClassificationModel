@@ -17,7 +17,7 @@ class FoodDataset(data.Dataset):
     '''
     Dataset containing SingleFood and AIFood
     
-    Arguments:
+    Arguments :
         root `str`: Path to csv file containing paths and labels of all image files. \
         CSV file is seperated by comma, the first item is path to the image, the rests are labels in multi-hot format.
         Ex (an image with label 2 and 4): `./path/to/image.jpg,0,0,1,0,1`
@@ -66,7 +66,7 @@ class FoodDataset(data.Dataset):
         '''
         Get an image from dataset
         
-        Return:
+        Return :
             img `Tensor`: Image in Tensor format
             label `Tensor`: multi-hot label
         '''

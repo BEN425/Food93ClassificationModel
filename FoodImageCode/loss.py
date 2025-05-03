@@ -13,25 +13,18 @@ from torchvision.ops.focal_loss import sigmoid_focal_loss
 #? Use focal loss for unbalanced dataset
 
 # loss = nn.CrossEntropyLoss()
-loss = nn.BCELoss()
+bce_loss = nn.BCELoss()
 
-def cal_loss(logits: torch.Tensor, label: torch.Tensor) -> torch.Tensor:
+def cal_bce_loss(logits: torch.Tensor, label: torch.Tensor) -> torch.Tensor:
     '''
     Calculate BCE loss between `logits` and `label`
     '''
-    return loss(logits, label)
-
-def cal_focal_loss(logits: torch.Tensor, label: torch.Tensor) -> torch.Tensor:
-    '''
-    Calculate sigmoid focal loss between `logits` and `label`. 
-    `sigmoid_focal_loss` implicitly applies sigmoid function to logits.
-    '''
-    return sigmoid_focal_loss(logits, label, reduction="mean")
+    return bce_loss(logits, label)
 
 def cal_class_focal_loss(
     logits: torch.Tensor,
     label: torch.Tensor,
-    class_freq: torch.Tensor,
+    class_alpha: torch.Tensor,
     gamma: float = 2,
 ) -> torch.Tensor:
     """
@@ -39,23 +32,28 @@ def cal_class_focal_loss(
     
     `sigmoid_focal_loss` implicitly applies sigmoid function to logits.
 
-    Args:
-        class_freq `Tensor`: Class frequency of the dataset. Each value is in range [0, 1]
+    Arguments :
+        `logits` and `label` are both of dimenison `[batch_size, num_classes]`
+        `logits` is model output (without sigmoid)
+        `label` is multi-hot encoded ground-truth labels
+        class_alpha   `Tensor`: Alpha α of focal loss for each class. Each value is in range [0, 1]
         gamma `float`: Exponent of the modulating factor (1 - p_t) to
-                balance easy vs hard examples. Default: ``2``.
+                balance easy vs hard examples. Default: `2`.
     """
     
+    # BCE Loss
     p = torch.sigmoid(logits)
     ce_loss = F.binary_cross_entropy_with_logits(logits, label, reduction="none")
+    
+    # Gamma
     p_t = p * label + (1 - p) * (1 - label)
     loss = ce_loss * ((1 - p_t) ** gamma)
 
-    alpha_t = (1 - class_freq) * label + class_freq * (1 - label)
+    # Alpha
+    alpha_t = class_alpha * label + (1 - class_alpha) * (1 - label)
     loss = alpha_t * loss
 
-    loss = loss.mean()
-
-    return loss
+    return loss.mean()
 
 def cal_l2_regularization(model, beta=1e-4) -> torch.Tensor:
     l2_reg = 0.0

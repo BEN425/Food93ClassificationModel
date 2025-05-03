@@ -24,7 +24,13 @@ for folder in cls_folders :
 
 cls_freq /= cls_freq.sum()
 
+# Calculate class entropy
+cls_entropy = -torch.log2(cls_freq)
+
 # Write output
 
 with open(f"../Database/class_freq.txt", "w") as file :
     file.writelines(f"{i}\n" for i in cls_freq)
+
+with open(f"../Database/class_entropy.txt", "w") as file :
+    file.writelines(f"{i}\n" for i in cls_entropy)
