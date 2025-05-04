@@ -87,7 +87,7 @@
 86	Shellfish
 87	Shrimp
 88	OtherSeafoods
-89	Eggs
+89	Egg
 90	Tofu
 91	HardBeanCurd
 92	SoybeanProducts
