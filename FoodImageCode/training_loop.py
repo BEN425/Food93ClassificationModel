@@ -112,6 +112,9 @@ class Trainer():
             console.print( "====================")
             console.print(f"{f'Epoch {epoch}/{start_epoch}-{end_epoch-1}':^20}")
             console.print( "====================")
+
+            self.train_dataloader.sampler.set_epoch(epoch)
+            self.valid_dataloader.sampler.set_epoch(epoch)
             
             # Record metrics of the epoch
             record_dict = {
@@ -212,7 +215,7 @@ class Trainer():
         torch.save(
             {
                 "epoch": epoch,
-                "model": self.model.state_dict(),
+                "model": self.model.module.state_dict(),
                 "model_ema": self.ema.ema_model.state_dict(),
                 "opt": self.opt.state_dict(),
                 "record_dict": record_dict,    

@@ -8,6 +8,11 @@ import torch.nn as nn
 from torch.utils.data import DataLoader
 import torchvision.models as models
 import torchvision.transforms as transforms
+# For DDP with multiple GPUs
+from torch.utils.data.distributed import DistributedSampler
+import torch.distributed as dist
+from torch.nn.parallel import DistributedDataParallel as DDP
+import torch.multiprocessing as mp
 
 from dataset import FoodDataset
 from training_loop import Trainer
@@ -22,10 +27,12 @@ console = get_console()
 
 ### Main Function ###
 
-def main(cfg: dict) :
+def main(device: int, cfg: dict, world_size: int = 1) :
     console.print("Initializing...")
     init_seed(cfg["SEED"])
-    device = torch.device(f"cuda:{cfg['GPU_ID']}") 
+    ddp_setup(device, world_size)
+    
+    # device = rank
     
     console.print("Loading dataset...")
     dataset = load_dataset(cfg)
@@ -35,6 +42,7 @@ def main(cfg: dict) :
     model = load_model(cfg)
     model = model.to(device)
     start_epoch, end_epoch = 0, cfg["EPOCHS"]
+    model = DDP(model, device_ids=[cfg["GPU_ID"]])
 
     # Optimizer, change to AdamW
     # opt = torch.optim.SGD(
@@ -93,6 +101,12 @@ def init_seed(seed: int, cuda_deterministic=True) :
     torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = cuda_deterministic
     torch.backends.cudnn.benchmark = not cuda_deterministic
+
+def ddp_setup(rank: int, world_size: int):
+    os.environ["MASTER_ADDR"] = "localhost"
+    os.environ["MASTER_PORT"] = "12355"
+    torch.cuda.set_device(rank)
+    dist.init_process_group(backend="nccl", rank=rank, world_size=world_size)
 
 # Load pretraind ResNet50 model
 def load_model(cfg) -> nn.Module :
@@ -167,10 +181,20 @@ def load_dataset(cfg) -> "dict[str, DataLoader]":
     # Load dataset and dataloader
     train_dataset = FoodDataset(cfg["TRAIN_CSV_DIR"], transform=train_trfs)
     train_dataloader = DataLoader(
-        train_dataset, batch_size=cfg["BATCH_SIZE"], drop_last=True, shuffle=True, num_workers=cfg["WORKERS"])
+        train_dataset,
+        batch_size=cfg["BATCH_SIZE"],
+        drop_last=True,
+        num_workers=cfg["WORKERS"],
+        sampler=DistributedSampler(train_dataset)
+    )
     valid_dataset = FoodDataset(cfg["VALID_CSV_DIR"], transform=valid_trfs)
     valid_dataloader = DataLoader(
-        valid_dataset, batch_size=cfg["EVAL_BATCH_SIZE"], drop_last=True, shuffle=False, num_workers=cfg["WORKERS"])
+        valid_dataset,
+        batch_size=cfg["EVAL_BATCH_SIZE"],
+        drop_last=True, shuffle=False,
+        num_workers=cfg["WORKERS"],
+        sampler=DistributedSampler(valid_dataset, shuffle=False)
+    )
 
     dataset = {
         "train": train_dataloader,
@@ -186,6 +210,11 @@ if __name__ == "__main__":
     try :
         cfgparser = CfgParser(config_path="./cfg/Setting.yml")
         cfg = cfgparser.cfg_dict
-        main(cfg)
+
+        epochs = cfg["EPOCHS"]
+        batch_size = cfg["BATCH_SIZE"]
+        world_size = torch.cuda.device_count()
+        mp.spawn(main, args=(cfg, world_size,), nprocs=world_size, join=True)
+        # main(cfg)
     except Exception :
         console.print_exception(show_locals=False)
