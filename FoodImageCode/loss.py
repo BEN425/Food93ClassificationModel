@@ -24,7 +24,7 @@ def cal_bce_loss(logits: torch.Tensor, label: torch.Tensor) -> torch.Tensor:
 def cal_class_focal_loss(
     logits: torch.Tensor,
     label: torch.Tensor,
-    class_alpha: torch.Tensor = None,
+    class_alpha: torch.Tensor = .25,
     gamma: float = 2,
 ) -> torch.Tensor:
     """
