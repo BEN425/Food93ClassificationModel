@@ -93,7 +93,7 @@ class Trainer():
             end_epoch `int`
             cfg: Configs,
             class_alpha `Tensor`: Alpha α of focal loss for each class. Each value is in range [0, 1]
-            gamma `float`: Exponent of the modulating factor (1 - p_t) to balance easy vs hard examples. Default is `2`.
+            gamma `float`: Exponent of the modulating factor (1 - p_t) to balance easy vs hard examples
         `class_alpha` and `gamma` is not used in `bce` loss.
 
         Returns :
@@ -104,7 +104,6 @@ class Trainer():
         # Calculate progress bar
         batch_size = cfg["BATCH_SIZE"]
         total = len(self.train_dataloader.dataset) // batch_size
-        class_alpha = class_alpha.to(self.device) if class_alpha is not None else None
         
         # Store results of each epoch
         record_epoch = []

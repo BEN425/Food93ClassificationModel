@@ -12,7 +12,7 @@ TRAIN_SETTING:
     CHECKPOINT_PATH: '/home/msoc/ben/FoodImageCode/Results/checkpoints/3_21_focal_adam/3_21_ModifiedResNet50_93_epoch_29.pth.tar'
     TEST_METRICS: True
     # data
-    DATA_BASE_DIR  : '/home/msoc/ben/Database/single_food_preprocess_0503'
+    DATA_BASE_DIR  : '/home/msoc/ben/Database/AI_SingleFood_database_0310'
     FOODSEG_DIR    : '/home/msoc/ben/Database/FoodSeg103'
     ALL_CSV_DIR    : '/home/msoc/ben/FoodImageCode/csv/AllFoodImage.csv'
     TRAIN_CSV_DIR  : '/home/msoc/ben/FoodImageCode/csv/AllFoodImage_train_ratio811.csv'

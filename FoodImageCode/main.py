@@ -64,15 +64,15 @@ def main(cfg: dict) :
     cls_freq = load_class_frequency(cfg)
     cls_entropy = load_class_entropy(cfg)
     cls_entropy /= cls_entropy.max()
-    console.print(cls_freq)
-    console.print(cls_entropy)
+    # console.print(cls_freq)
+    # console.print(cls_entropy)
 
     # Training
     console.print("Training...")
     trainer = Trainer(dataset, model, opt, device, cfg)
     results = trainer.train(
         start_epoch, end_epoch, cfg,
-        class_alpha=cls_freq,
+        class_alpha=cls_freq.to(device),
         gamma=2
     )
 
@@ -99,7 +99,7 @@ def load_model(cfg) -> nn.Module :
     model = ModifiedResNet(3, 64, cfg["MODEL"]["CATEGORY_NUM"])
 
     # Load the pretrained weights into ModifiedResNet
-    pretrained_resnet = models.resnet50(pretrained=True)
+    pretrained_resnet = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
     pretrained_dict = pretrained_resnet.state_dict()
     model_dict = model.state_dict()
 
@@ -144,7 +144,7 @@ def load_class_entropy(cfg) -> torch.Tensor :
         for i, line in enumerate(file.readlines()) :
             cls_entropy[i] = float(line)
     
-    return cls_entropy
+    return cls_entropy * .99
 
 # Load datasets from csv file and apply preprocessing
 def load_dataset(cfg) -> "dict[str, DataLoader]":
@@ -155,7 +155,6 @@ def load_dataset(cfg) -> "dict[str, DataLoader]":
         transforms.CenterCrop(224),
         # Apply random transform to augment images
         transforms.RandomHorizontalFlip(0.5),
-        transforms.RandomVerticalFlip(0.5),
         transforms.Normalize(mean=[0.522, 0.475, 0.408], std=[0.118, 0.115, 0.117])
     ])
     valid_trfs = transforms.Compose([

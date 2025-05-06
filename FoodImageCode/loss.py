@@ -24,7 +24,7 @@ def cal_bce_loss(logits: torch.Tensor, label: torch.Tensor) -> torch.Tensor:
 def cal_class_focal_loss(
     logits: torch.Tensor,
     label: torch.Tensor,
-    class_alpha: torch.Tensor,
+    class_alpha: torch.Tensor = None,
     gamma: float = 2,
 ) -> torch.Tensor:
     """
@@ -36,9 +36,9 @@ def cal_class_focal_loss(
         `logits` and `label` are both of dimenison `[batch_size, num_classes]`
         `logits` is model output (without sigmoid)
         `label` is multi-hot encoded ground-truth labels
-        class_alpha   `Tensor`: Alpha α of focal loss for each class. Each value is in range [0, 1]
+        class_alpha   `Tensor`: Alpha α of focal loss for each class. Each value is in range [0, 1]. Default is 0.25
         gamma `float`: Exponent of the modulating factor (1 - p_t) to
-                balance easy vs hard examples. Default: `2`.
+                balance easy vs hard examples. Default is 2.
     """
     
     # BCE Loss
@@ -50,7 +50,8 @@ def cal_class_focal_loss(
     loss = ce_loss * ((1 - p_t) ** gamma)
 
     # Alpha
-    alpha_t = class_alpha * label + (1 - class_alpha) * (1 - label)
+    class_alpha = .25 if class_alpha is None else class_alpha
+    alpha_t = (1 - class_alpha) * label + class_alpha * (1 - label)
     loss = alpha_t * loss
 
     return loss.mean()

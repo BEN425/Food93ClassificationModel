@@ -120,17 +120,18 @@ class ModifiedResNet(nn.Module):
         out = self.relu(out)
         # bs, 64, 112, 112
         out1 = self.layer1(out)
-        #print("layer1 output:", out1.shape)
+        # print("layer1 output:", out1.shape)
         out2 = self.layer2(out1)
-        #print("layer2 output:", out2.shape)
+        # print("layer2 output:", out2.shape)
         out3 = self.layer3(out2)
-        #print("layer3 output:", out3.shape)
+        # print("layer3 output:", out3.shape)
         out4 = self.layer4(out3)
-        #print("layer4 output:", out4.shape)
+        # print("layer4 output:", out4.shape)
         out = self.avgpool(out4)
-        #print("avg output:", out.shape)
+        # print("avg output:", out.shape)
         out = out.view(out.size(0), -1)
         out = self.fc(out)
+        # print("final output:", out.shape)
         return out 
 
 

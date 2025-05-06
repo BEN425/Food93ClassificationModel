@@ -41,7 +41,8 @@ def cal_tp_fp_fn_tn(pred: torch.Tensor, label: torch.Tensor):
 # Calculate F1 score for a batch
 def cal_f1_score_acc(
     tp: torch.Tensor, fp: torch.Tensor, fn: torch.Tensor, tn: torch.Tensor,
-    alt_macrof1 = False
+    alt_macrof1 = False,
+    class_f1 = False
 ):
     '''
     Calculate F1 score for a batch of predictions and labels
@@ -58,8 +59,10 @@ def cal_f1_score_acc(
     Arguments :
         `tp`, `fp`, `fn`, `tn` are of dimension `[num_classes]`
         alt_macrof1: Use alternate macro F1 method
+        class_f1: Return F1 score of each class
     Returns :
-        `dict` contains `microf1`, `macrof1` and `micro_acc`.
+        `dict` contains `microf1`, `macrof1` and `micro_acc`, contains `class_f1` if `class_f1` is True
+    
     '''
 
 
@@ -105,11 +108,14 @@ def cal_f1_score_acc(
         if (precision_ma + recall_ma) > 0 else 0
     macroF1 = f1_cls.mean().item()
 
-    return {
+    metrics = {
         "microf1": microF1,
         "macrof1": macroF1_alt if alt_macrof1 else macroF1,
         "micro_acc": micro_acc,
     }
+    if class_f1:
+        metrics["class_f1"] = f1_cls
+    return metrics
 
 # Calculate hamming accuracy and zero accuracy for a batch
 def cal_ham_zero_acc(logits: torch.Tensor, label: torch.Tensor):
@@ -172,7 +178,8 @@ def evaluate_dataset(
     dataloader: Dataloader,
     cate_num: int,
     device,
-    class_alpha: torch.Tensor,
+    class_f1: bool = False,
+    class_alpha: torch.Tensor = None,
     gamma: float = 2
 ) -> "dict[str, float]" :
     '''
@@ -182,7 +189,7 @@ def evaluate_dataset(
     Arguments :
         cate_num `int`: Number of categories
         class_alpha `Tensor`: Alpha α of focal loss for each class. Each value is in range [0, 1]
-        gamma `float`: Exponent of the modulating factor (1 - p_t) to balance easy vs hard examples. Default: `2`.
+        gamma `float`: Exponent of the modulating factor (1 - p_t) to balance easy vs hard examples.
 
     Returns :
         `dict` containing evaluation results
@@ -210,7 +217,6 @@ def evaluate_dataset(
 
     model.eval() # Evaluation mode
     for idx, (img, label) in enumerate(dataloader):
-        print(idx)
         img = img.to(device)
         label = label.to(device, dtype=torch.float32)
         
@@ -236,12 +242,14 @@ def evaluate_dataset(
         corrects += valid_err_cor[1]
 
     # Record loss and metrics
-    valid_metrics_results = cal_f1_score_acc(tp, fp, fn, tn)
+    valid_metrics_results = cal_f1_score_acc(tp, fp, fn, tn, class_f1=class_f1)
     record_dict["valid_microf1"]     = valid_metrics_results["microf1"]
     record_dict["valid_macrof1"]     = valid_metrics_results["macrof1"]
     record_dict["valid_micro_acc"]   = valid_metrics_results["micro_acc"]
     record_dict["valid_ham_loss"]    = errors / label_count
     record_dict["valid_zero_acc"]    = 1 - corrects / data_count
     record_dict["valid_total_loss"] /= len(dataloader)
+    if class_f1:
+        record_dict["class_f1"] = valid_metrics_results["class_f1"]
 
     return record_dict
