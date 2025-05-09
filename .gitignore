@@ -3,6 +3,13 @@
 *.txt
 *.docx
 *.zip
+*.jpg
+*.png
+*.json
+compress.py
+test*
+Pipfile*
+core*
 
 Results/
 inference_results/
@@ -13,7 +20,6 @@ csv/
 twcc/
 zips/
 image/
-compress.py
 
 Database/*
 !Database/class.txt

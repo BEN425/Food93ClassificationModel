@@ -27,71 +27,109 @@ console = get_console()
 
 ### Main Function ###
 
-def main(device: int, cfg: dict, world_size: int = 1) :
-    console.print("Initializing...")
-    init_seed(cfg["SEED"])
-    ddp_setup(device, world_size)
-    
-    # device = rank
-    
-    console.print("Loading dataset...")
-    dataset = load_dataset(cfg)
-    
-    # Load model
-    console.print("Loading model...")
-    model = load_model(cfg)
-    model = model.to(device)
-    start_epoch, end_epoch = 0, cfg["EPOCHS"]
-    model = DDP(model, device_ids=[cfg["GPU_ID"]])
+def main(cfg: dict) :
+    try :
 
-    # Optimizer, change to AdamW
-    # opt = torch.optim.SGD(
-    #     model.parameters(),
-    #     lr=cfg["MODEL"]["LR"],
-    #     momentum=cfg["MODEL"]["MOMENTUM"],
-    #     weight_decay=cfg["MODEL"]["WEIGHT_DECAY"]
-    # )
-    opt = torch.optim.AdamW(
-        model.parameters(),
-        lr=cfg["MODEL"]["LR"],
-        weight_decay=cfg["MODEL"]["WEIGHT_DECAY"]
-    )
+        # Initialization
+        console.print("Initializing...")
 
-    # Resume from checkpoint
-    if cfg["RESUME"] : 
-        console.print("Resuming from checkpoint...")
+        world_size = int(os.environ.get("WORLD_SIZE", 1)) 
+        using_ddp = world_size > 1
+        if using_ddp :
+            ddp_setup()
+            rank = int(os.environ.get("LOCAL_RANK", 0))
+            device = rank % torch.cuda.device_count()
+        else :
+            rank = 0
+            device = torch.device(f"cuda:{cfg['GPU_ID']}")
+        
+        if using_ddp :
+            console.print(f"DDP with {world_size} GPUs")
+        
+        init_seed(cfg["SEED"])
+        
+        # Load dataloader
+        console.print("Loading dataset...")
+        dataset = load_dataset(cfg, using_ddp, rank)
+        
+        # Load model
+        console.print("Loading model...")
+        model = load_model(cfg)
+        model = model.to(device)
+        start_epoch, end_epoch = 0, cfg["EPOCHS"]
+        if using_ddp :
+            ddp_model = DDP(model, device_ids=[device])
 
-        checkpoint = torch.load(cfg["CHECKPOINT_PATH"])
-        model.load_state_dict(checkpoint["model"])
-        opt.load_state_dict(checkpoint["opt"])
-        start_epoch += checkpoint["epoch"]
-        end_epoch += checkpoint["epoch"]
+        # Optimizer, change to AdamW
+        # opt = torch.optim.SGD(
+        #     model.parameters(),
+        #     lr=cfg["MODEL"]["LR"],
+        #     momentum=cfg["MODEL"]["MOMENTUM"],
+        #     weight_decay=cfg["MODEL"]["WEIGHT_DECAY"]
+        # )
+        opt = torch.optim.AdamW(
+            model.parameters(),
+            lr=cfg["MODEL"]["LR"],
+            weight_decay=cfg["MODEL"]["WEIGHT_DECAY"]
+        )
 
-    # Load class frequencies and entropies for focal loss parameter ɑ
-    console.print("Loading class frequencies and entropies...")
-    cls_freq = load_class_frequency(cfg)
-    cls_entropy = load_class_entropy(cfg)
-    cls_entropy /= cls_entropy.max()
-    # console.print(cls_freq)
-    # console.print(cls_entropy)
+        # Resume from checkpoint
+        if cfg["RESUME"] : 
+            console.print("Resuming from checkpoint...")
 
-    # Training
-    console.print("Training...")
-    trainer = Trainer(dataset, model, opt, device, cfg)
-    results = trainer.train(
-        start_epoch, end_epoch, cfg,
-        class_alpha=cls_freq.to(device),
-        gamma=2
-    )
+            checkpoint = torch.load(cfg["CHECKPOINT_PATH"])
+            if using_ddp :
+                ddp_model.module.load_state_dict(checkpoint["model"])
+            else :
+                model.load_state_dict(checkpoint["model"])
+            opt.load_state_dict(checkpoint["opt"])
+            start_epoch += checkpoint["epoch"]
+            end_epoch += checkpoint["epoch"]
 
-    # Print training result
-    console.print(f"Training results (Epoch {results[-1]['epoch']}):")
-    console.print(results[-1])
+        # Load class frequencies and entropies for focal loss parameter ɑ
+        console.print("Loading class frequencies and entropies...")
+        cls_freq = load_class_frequency(cfg)
+        cls_entropy = load_class_entropy(cfg)
+        cls_entropy /= cls_entropy.max()
+        cls_entropy *= .99
+        # console.print(cls_freq)
+        # console.print(cls_entropy)
 
-    # Store result locally
-    with open("results.json", "w") as file :
-        json.dump(results, file, indent=4, ensure_ascii=False)
-    console.print("Training results saved at \"results.json\"")
+        # if device == 0 :
+        #     dist.barrier()
+
+        # Training
+        console.print("Training...")
+        trainer = Trainer(
+            dataset,
+            ddp_model if using_ddp else model,
+            opt,
+            device,
+            cfg,
+            using_ddp
+        )
+        results = trainer.train(
+            start_epoch, end_epoch, cfg,
+            class_alpha=cls_freq.to(device),
+            gamma=2
+        )
+
+    finally :
+
+        if rank == 0 :
+
+            # Print training result
+            console.print(f"Training results (Epoch {results[-1]['epoch']}):")
+            console.print(results[-1])
+
+            # Store result locally
+            with open("results1.json", "w") as file :
+                json.dump(results, file, indent=4, ensure_ascii=False)
+            console.print("Training results saved at \"results.json\"")
+
+        # Ensure the process group is destroyed
+        if using_ddp : dist.destroy_process_group()
+        console.print("Destroyed process group.")
 
 # Initialize random seeds
 def init_seed(seed: int, cuda_deterministic=True) :
@@ -102,11 +140,17 @@ def init_seed(seed: int, cuda_deterministic=True) :
     torch.backends.cudnn.deterministic = cuda_deterministic
     torch.backends.cudnn.benchmark = not cuda_deterministic
 
-def ddp_setup(rank: int, world_size: int):
-    os.environ["MASTER_ADDR"] = "localhost"
-    os.environ["MASTER_PORT"] = "12355"
+# Initialization for DDP
+def ddp_setup() :
+    #! Explicity specify addr and port might get error
+    #! RuntimeError: nonce == returnedNonce INTERNAL ASSERT FAILED at "/pytorch/torch/csrc/distributed/c10d/TCPStore.cpp":418, please report a bug to PyTorch. Ping failed, invalid nonce returned
+    # os.environ["MASTER_ADDR"] = "localhost"
+    # os.environ["MASTER_PORT"] = "12356"
+
+    # Initialize the process group
+    dist.init_process_group(backend="nccl", init_method="env://")
+    rank = int(os.environ["LOCAL_RANK"])
     torch.cuda.set_device(rank)
-    dist.init_process_group(backend="nccl", rank=rank, world_size=world_size)
 
 # Load pretraind ResNet50 model
 def load_model(cfg) -> nn.Module :
@@ -161,7 +205,7 @@ def load_class_entropy(cfg) -> torch.Tensor :
     return cls_entropy * .99
 
 # Load datasets from csv file and apply preprocessing
-def load_dataset(cfg) -> "dict[str, DataLoader]":
+def load_dataset(cfg: dict, using_ddp: bool = False, rank: int = 0) -> "dict[str, DataLoader]":
     # Transforms
     train_trfs = transforms.Compose([
         transforms.ToTensor(),
@@ -179,21 +223,32 @@ def load_dataset(cfg) -> "dict[str, DataLoader]":
     ])
 
     # Load dataset and dataloader
+
+    # Split batch to multiple GPUs
+    train_ba_size = cfg["BATCH_SIZE"]       // dist.get_world_size() if using_ddp else cfg["BATCH_SIZE"]
+    valid_ba_size = cfg["EVAL_BATCH_SIZE"]  // dist.get_world_size() if using_ddp else cfg["EVAL_BATCH_SIZE"]
+
     train_dataset = FoodDataset(cfg["TRAIN_CSV_DIR"], transform=train_trfs)
+    valid_dataset = FoodDataset(cfg["VALID_CSV_DIR"], transform=valid_trfs)
+
+    #? Use `DistributedSampler` for DDP 
+    train_sampler = DistributedSampler(train_dataset, rank=rank, shuffle=True)  if using_ddp else None
+    valid_sampler = DistributedSampler(valid_dataset, rank=rank, shuffle=False) if using_ddp else None
+
     train_dataloader = DataLoader(
         train_dataset,
-        batch_size=cfg["BATCH_SIZE"],
+        batch_size=train_ba_size,
         drop_last=True,
+        shuffle=False if using_ddp else True,
         num_workers=cfg["WORKERS"],
-        sampler=DistributedSampler(train_dataset)
+        sampler=train_sampler
     )
-    valid_dataset = FoodDataset(cfg["VALID_CSV_DIR"], transform=valid_trfs)
     valid_dataloader = DataLoader(
         valid_dataset,
-        batch_size=cfg["EVAL_BATCH_SIZE"],
+        batch_size=valid_ba_size,
         drop_last=True, shuffle=False,
         num_workers=cfg["WORKERS"],
-        sampler=DistributedSampler(valid_dataset, shuffle=False)
+        sampler=valid_sampler
     )
 
     dataset = {
@@ -204,17 +259,18 @@ def load_dataset(cfg) -> "dict[str, DataLoader]":
     return dataset
 
 if __name__ == "__main__":
+    import time
+    start = time.time()
     
     console.print("Parsing config...")
 
     try :
         cfgparser = CfgParser(config_path="./cfg/Setting.yml")
         cfg = cfgparser.cfg_dict
-
-        epochs = cfg["EPOCHS"]
-        batch_size = cfg["BATCH_SIZE"]
-        world_size = torch.cuda.device_count()
-        mp.spawn(main, args=(cfg, world_size,), nprocs=world_size, join=True)
-        # main(cfg)
+        main(cfg)
     except Exception :
         console.print_exception(show_locals=False)
+    finally :
+        end = time.time()
+        dt = end - start
+        console.print(f"Time used = {dt}")

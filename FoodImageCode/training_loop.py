@@ -44,7 +44,8 @@ class Trainer():
             model: nn.Module,
             opt: torch.optim.Optimizer,
             device,
-            cfg: "dict[str]"
+            cfg: "dict[str]",
+            using_ddp: bool = False
         ):
         
         self.train_dataloader = dataset["train"]
@@ -54,7 +55,9 @@ class Trainer():
         self.cfg = cfg
         self.opt = opt
         self.device = device
-        self.ema = EMA(self.model)
+        self.gpu_id = int(os.environ.get("LOCAL_RANK", 0))
+        self.using_ddp = using_ddp
+        self.ema = EMA(self.model.module if using_ddp else self.model)
         
         # Resume from the lsat checkpoint
         if cfg["RESUME"]:
@@ -64,8 +67,10 @@ class Trainer():
         
         # Specify saved model name and path
         date = f"{datetime.datetime.now().month}_{datetime.datetime.now().day}"
-        save_model_path = os.path.join(cfg["SAVE_DIR"], "checkpoints", date)
-        log_path = os.path.join(cfg["SAVE_DIR"], "logs", date)
+        sub_dir = self.cfg.get("SAVE_SUB_DIR", date)
+        save_model_path = os.path.join(cfg["SAVE_DIR"], "checkpoints", sub_dir)
+        log_path = os.path.join(cfg["SAVE_DIR"], "logs", sub_dir)
+
         os.makedirs(save_model_path, exist_ok=True)
         os.makedirs(log_path, exist_ok=True)
         self.save_model_name = os.path.join(
@@ -109,12 +114,13 @@ class Trainer():
         record_epoch = []
         
         for epoch in range(start_epoch, end_epoch):
-            console.print( "====================")
-            console.print(f"{f'Epoch {epoch}/{start_epoch}-{end_epoch-1}':^20}")
-            console.print( "====================")
+            # console.print( "====================")
+            # console.print(f"{f'Epoch {epoch}/{start_epoch}-{end_epoch-1}':^20}")
+            # console.print( "====================")
 
-            self.train_dataloader.sampler.set_epoch(epoch)
-            self.valid_dataloader.sampler.set_epoch(epoch)
+            if self.using_ddp :
+                self.train_dataloader.sampler.set_epoch(epoch)
+                self.valid_dataloader.sampler.set_epoch(epoch)
             
             # Record metrics of the epoch
             record_dict = {
@@ -132,16 +138,23 @@ class Trainer():
             fn = torch.zeros(self.class_num).to(self.device)
             tn = torch.zeros(self.class_num).to(self.device)
             # For calculating Hamming acc and Zero acc
-            errors = 0
-            corrects = 0
+            err_label = 0
+            err_data  = 0
             label_count = 0
-            data_count = 0
+            data_count  = 0
             
+            self.model.to(self.device)
+            self.ema.to(self.device)
+
             self.model.train() # Training mode
             for idx, (img, label) in tqdm(
                 enumerate(self.train_dataloader),
+                desc=f"GPU[{self.gpu_id}]: Epoch {epoch}/{start_epoch}-{end_epoch-1}",
+                # position=self.gpu_id,
+                leave=True,
                 total=total
             ):
+                
                 
                 img, label = img.to(self.device), label.to(self.device).to(torch.float32)
                 
@@ -171,20 +184,22 @@ class Trainer():
                 fp += tp_fp_fn_tn[1]
                 fn += tp_fp_fn_tn[2]
                 tn += tp_fp_fn_tn[3]
-                errors   += train_err_cor[0]
-                corrects += train_err_cor[1]
+                err_label += train_err_cor[0]
+                err_data  += train_err_cor[1]
     
             # Record each epoch loss
             train_metrics_results = cal_f1_score_acc(tp, fp, fn, tn)
-            record_dict["train_microf1"]     = train_metrics_results["microf1"]
-            record_dict["train_macrof1"]     = train_metrics_results["macrof1"]
-            record_dict["train_micro_acc"]   = train_metrics_results["micro_acc"]
-            record_dict["train_total_loss"]  = errors / label_count
-            record_dict["train_ham_loss"]    = 1 - corrects / data_count
-            record_dict["train_zero_acc"]   /= len(self.train_dataloader)
+            #? `float` to ensure all values are not Tensor
+            record_dict["train_microf1"]     = float(train_metrics_results["microf1"])
+            record_dict["train_macrof1"]     = float(train_metrics_results["macrof1"])
+            record_dict["train_micro_acc"]   = float(train_metrics_results["micro_acc"])
+            record_dict["train_ham_loss"]    = float(err_label / label_count)
+            record_dict["train_zero_acc"]    = float(1 - err_data / data_count)
+            record_dict["train_total_loss"] /= len(self.train_dataloader)
 
             # Evaluate on validation set
-            if cfg["TEST_METRICS"]:
+
+            if cfg["TEST_METRICS"] :
                 valid_results = evaluate_dataset(
                     self.model,
                     self.valid_dataloader,
@@ -196,27 +211,32 @@ class Trainer():
                 record_dict.update(valid_results)
             
             # Save metrics and checkpoint of the epoch
+            # Only record on the main process
+            # if self.is_main :
             self._monitor(record_dict, epoch)
             self._save_checkpoint(record_dict, epoch)
             record_dict["epoch"] = epoch
             record_epoch.append(record_dict)
 
+        # Close writer
         self.writer.flush()
+        self.writer.close()
 
         return record_epoch
 
     def _monitor(self, record_dict: "dict[str, float]", epoch: int):
         for key, value in record_dict.items():
             self.writer.add_scalar(key, value, epoch)
-        console.print(record_dict)
+        if self.gpu_id == 0 :
+            console.print(record_dict)
     
     def _save_checkpoint(self, record_dict: "dict[str, float]", epoch: int):
         checkpoint_name = f"{self.save_model_name}_epoch_{epoch}.pth.tar"
         torch.save(
             {
                 "epoch": epoch,
-                "model": self.model.module.state_dict(),
-                "model_ema": self.ema.ema_model.state_dict(),
+                "model": self.model.module.cpu().state_dict() if self.using_ddp else self.model.cpu().state_dict(),
+                "model_ema": self.ema.cpu().ema_model.state_dict(),
                 "opt": self.opt.state_dict(),
                 "record_dict": record_dict,    
             },

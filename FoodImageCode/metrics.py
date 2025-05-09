@@ -113,8 +113,8 @@ def cal_f1_score_acc(
         "macrof1": macroF1_alt if alt_macrof1 else macroF1,
         "micro_acc": micro_acc,
     }
-    if class_f1:
-        metrics["class_f1"] = f1_cls
+    # if class_f1:
+    #     metrics["class_f1"] = f1_cls
     return metrics
 
 # Calculate hamming accuracy and zero accuracy for a batch
@@ -160,8 +160,8 @@ def cal_error_nums(pred: torch.Tensor, label: torch.Tensor) :
 
     err_batch = (pred != label).sum(dim=1)
     err_label = err_batch.sum().item()
-    correct_data = err_batch.count_nonzero().item()
-    return err_label, correct_data
+    err_data  = err_batch.count_nonzero().item()
+    return err_label, err_data
 
 # Calclate acccuracy for single label
 #? Not used in multi-label classification
@@ -210,8 +210,8 @@ def evaluate_dataset(
     fn = torch.zeros(cate_num).to(device)
     tn = torch.zeros(cate_num).to(device)
     # For calculating Hamming acc and Zero acc
-    errors = 0
-    corrects = 0
+    err_label = 0
+    err_data = 0
     label_count = 0
     data_count = 0
 
@@ -238,18 +238,19 @@ def evaluate_dataset(
         fp += tp_fp_fn_tn[1]
         fn += tp_fp_fn_tn[2]
         tn += tp_fp_fn_tn[3]
-        errors   += valid_err_cor[0]
-        corrects += valid_err_cor[1]
+        err_label += valid_err_cor[0]
+        err_data  += valid_err_cor[1]
 
     # Record loss and metrics
     valid_metrics_results = cal_f1_score_acc(tp, fp, fn, tn, class_f1=class_f1)
-    record_dict["valid_microf1"]     = valid_metrics_results["microf1"]
-    record_dict["valid_macrof1"]     = valid_metrics_results["macrof1"]
-    record_dict["valid_micro_acc"]   = valid_metrics_results["micro_acc"]
-    record_dict["valid_ham_loss"]    = errors / label_count
-    record_dict["valid_zero_acc"]    = 1 - corrects / data_count
+    record_dict["valid_microf1"]     = float(valid_metrics_results["microf1"])
+    record_dict["valid_macrof1"]     = float(valid_metrics_results["macrof1"])
+    record_dict["valid_micro_acc"]   = float(valid_metrics_results["micro_acc"])
+    record_dict["valid_ham_loss"]    = float(err_label / label_count)
+    record_dict["valid_zero_acc"]    = float(1 - err_data / data_count)
     record_dict["valid_total_loss"] /= len(dataloader)
-    if class_f1:
-        record_dict["class_f1"] = valid_metrics_results["class_f1"]
+    
+    # if class_f1:
+    #     record_dict["class_f1"] = valid_metrics_results["class_f1"]
 
     return record_dict
