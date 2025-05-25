@@ -4,30 +4,37 @@ PARSER_SETTING:
     WORKERS: 4
     EPOCHS: 30
     # EPOCHS: 1
-    BATCH_SIZE: 256
-    EVAL_BATCH_SIZE: 256
+    BATCH_SIZE: 10
+    EVAL_BATCH_SIZE: 10
 
 TRAIN_SETTING:
+    ROOT: '/home/msoc/ben/'
+    # ROOT: '/work/u6140562/Food93ClassificationModel/'
     RESUME: False
-    CHECKPOINT_PATH: '/work/u6140562/Food93ClassificationModel/FoodImageCode/Results/checkpoints/5_8/5_8_ModifiedResNet50_93_epoch_6.pth.tar'
+    CHECKPOINT_PATH: 'FoodImageCode/Results/checkpoints/5_14/5_14_ModifiedResNet50_93_epoch_4.pth.tar'
     TEST_METRICS: True
     # data
-    DATA_BASE_DIR  : '/work/u6140562/Food93ClassificationModel/Database/single_food_preprocess_0503'
-    FOODSEG_DIR    : '/work/u6140562/Food93ClassificationModel/Database/FoodSeg103'
-    ALL_CSV_DIR    : '/work/u6140562/Food93ClassificationModel/FoodImageCode/csv/AllFoodImage.csv'
-    TRAIN_CSV_DIR  : '/work/u6140562/Food93ClassificationModel/FoodImageCode/csv/AllFoodImage_train_ratio811.csv'
-    VALID_CSV_DIR  : '/work/u6140562/Food93ClassificationModel/FoodImageCode/csv/AllFoodImage_valid_ratio811.csv'
-    TEST_CSV_DIR   : '/work/u6140562/Food93ClassificationModel/FoodImageCode/csv/AllFoodImage_test_ratio811.csv'
-    FOODSEG_CSV_DIR: '/work/u6140562/Food93ClassificationModel/FoodImageCode/csv/FoodSeg103.csv'
-    SAVE_DIR       : '/work/u6140562/Food93ClassificationModel/FoodImageCode/Results'
-    SAVE_SUB_DIR   : '5_8_focal2'
-    # mdoel
+    DATA_BASE_DIR  : 'Database/single_food_with_preprocess_0503'
+    # DATA_BASE_DIR  : 'Database/aisingle_food_preprocess_0503'
+    FOODSEG_DIR    : 'Database/FoodSeg103'
+    ALL_CSV_DIR    : 'FoodImageCode/csv/AllFoodImage.csv'
+    TRAIN_CSV_DIR  : 'FoodImageCode/csv/AllFoodImage_train_ratio811.csv'
+    VALID_CSV_DIR  : 'FoodImageCode/csv/AllFoodImage_valid_ratio811.csv'
+    TEST_CSV_DIR   : 'FoodImageCode/csv/AllFoodImage_test_ratio811.csv'
+    FOODSEG_CSV_DIR: 'FoodImageCode/csv/FoodSeg103.csv'
+    SAVE_DIR       : 'FoodImageCode/Results'
+    SAVE_SUB_NAME  : '5_24_single_wd_05'
+    # Model
     MODEL: 
         NAME: 'ModifiedResNet50_93'
         INCHANEELS: 3
         OUTCHANNELS: 64
         CATEGORY_NUM: 93
-        # LR: .001
+        # LR: .00001
         LR: .0001
         MOMENTUM: 0.9
-        WEIGHT_DECAY: .0005
+        WEIGHT_DECAY: .05
+    # Loss
+    LOSS:
+        ALPHA: 0.25
+        GAMMA: 2.0

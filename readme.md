@@ -54,7 +54,6 @@ Environment：
 
 Pytorch and CUDA version depend on your GPU.
 
-
 1. Put your database in `Database` folder, see **Database** section for detailed file structure.
 2. `cd utility`
 3. Run `calc_class_freq_entropy.py` to generate class frequencies and entropies files for focal loss. You can also run other scripts to check the database.
@@ -62,7 +61,8 @@ Pytorch and CUDA version depend on your GPU.
 5. `cd ../FoodImageCode`
 6. Run `make_image_csv.py` to generate CSV files of the dataset.
 7. Run `main.py` to start training.
-8. Retrieve training results in `FoodImageCode/Results` folder, including model checkpoints and tensorboard logs.
+    - To train the model using multiple GPUs with Pytorch DDP, run `torchrun --standalone --nproc_per_node=gpu main.py` instead
+8. Retrieve training results in `FoodImageCode/Results` folder, including model checkpoints, tensorboard logs.
 
 
 # Database
@@ -76,9 +76,10 @@ Pytorch and CUDA version depend on your GPU.
 ### Discription
 Merged *AI Food Database* and *Single Food Database*.
 
-If an image is multi-class, it will exist repeatedly in multiple folders. For example：if image `fruit.jpg` has both apple and orange classes, it exists both in apple and orange folders.
-- *AI Food* has 372095 images and contains both eastern and western food. Most food images are combinational food. The images are collected from existing datasets.
-- *Single Food* has 25647 images. Most food images only have a single food and are Taiwanese food. The images are collected from internet.
+If an image is multi-class, it will exist repeatedly in multiple folders. For example：if image `fruit.jpg` has both apple and orange classes, it exists both in *Apple* and *Orange* folders.
+
+- *AI Food* contains both eastern and western food. Most food images are combinational food. The images are collected from existing datasets.
+- *Single Food* images are collected from internet. Most food images only have a single food and are Taiwanese food.
 
 ### File Structure
 4 levels of folders

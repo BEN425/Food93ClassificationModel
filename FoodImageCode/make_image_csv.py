@@ -28,7 +28,7 @@ val_csv_path   = cfg["VALID_CSV_DIR"]
 random.seed(cfg["SEED"])
 
 # Check whether a file is an image file
-def check_image(file: str) :
+def check_filename(file: str) :
     filename = file.lower()
     return filename.split(".")[-1].lower() in [
         "jpg", "jpeg", "png", "avif", "webp"
@@ -93,7 +93,7 @@ for six_category in os.scandir(database_path):
                 #* 4th level: image files (.jpg, .jpeg, .png, etc)
                 for image_file in os.scandir(third_category.path) :
                     filename = image_file.name
-                    if not image_file.is_file() or not check_image(filename) :
+                    if not image_file.is_file() or not check_filename(filename) :
                         continue
 
                     # Avoid repeated file name

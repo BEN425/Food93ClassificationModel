@@ -6,6 +6,7 @@ Remove argparse features to fix error in Jupyter notebook
 '''
 
 
+import os
 import yaml
 import argparse
 
@@ -17,7 +18,15 @@ class CfgParser():
         
         # Combine settings
         self.cfg_dict = {**config["PARSER_SETTING"], **config["TRAIN_SETTING"]}
-        
+
+        # Add root directory to other relative paths
+        for key, value in self.cfg_dict.items() :
+            if not isinstance(key, str) :
+                raise TypeError("Key should be type of str")
+            
+            if key.upper().endswith("DIR") or key.upper().endswith("PATH") :
+                self.cfg_dict[key] = os.path.join(self.cfg_dict["ROOT"], value)
+
     def _load_config(self, config_path):
         with open(config_path, "r") as f:
             config = yaml.load(f, Loader=yaml.FullLoader)

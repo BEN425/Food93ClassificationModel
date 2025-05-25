@@ -1,4 +1,5 @@
 import torch
+import torch.distributed as dist
 import torch.nn as nn
 import torch.nn.init as init
 import torch.nn.functional as F
@@ -39,8 +40,9 @@ def conv3x3(in_channels, out_channels, kernel, stride, dilated=False):
         return Conv2dSame(in_channels, out_channels, kernel, stride, bias=False)      
 
 def batch_norm_2d(channels, momentum=1e-3, eps=1e-5):
-    return nn.SyncBatchNorm(channels, momentum=momentum, eps=eps)
-    # return nn.BatchNorm2d(channels, momentum=momentum, eps=eps)
+    return nn.SyncBatchNorm(channels, momentum=momentum, eps=eps) \
+        if dist.is_initialized() and dist.get_world_size() > 1 else \
+        nn.BatchNorm2d(channels, momentum=momentum, eps=eps)
 
 class Bottleneck(nn.Module):
     def __init__(self, in_channels, out_channels, stride=1, dilate=False):
@@ -134,6 +136,20 @@ class ModifiedResNet(nn.Module):
         out = self.fc(out)
         # print("final output:", out.shape)
         return out 
+
+    def convol_last_layer(self, x):
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+        # bs, 64, 112, 112
+        out1 = self.layer1(out)
+        #print("layer1 output:", out1.shape)
+        out2 = self.layer2(out1)
+        #print("layer2 output:", out2.shape)
+        out3 = self.layer3(out2)
+        #print("layer3 output:", out3.shape)
+        out4 = self.layer4(out3)
+        return out4
 
 
 if __name__ == '__main__':

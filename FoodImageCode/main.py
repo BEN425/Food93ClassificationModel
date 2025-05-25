@@ -12,7 +12,7 @@ import torchvision.transforms as transforms
 from torch.utils.data.distributed import DistributedSampler
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
-import torch.multiprocessing as mp
+# import torch.multiprocessing as mp
 
 from dataset import FoodDataset
 from training_loop import Trainer
@@ -33,18 +33,17 @@ def main(cfg: dict) :
         # Initialization
         console.print("Initializing...")
 
+        results = None
         world_size = int(os.environ.get("WORLD_SIZE", 1)) 
         using_ddp = world_size > 1
         if using_ddp :
             ddp_setup()
             rank = int(os.environ.get("LOCAL_RANK", 0))
             device = rank % torch.cuda.device_count()
+            console.print(f"DDP with {world_size} GPUs")
         else :
             rank = 0
             device = torch.device(f"cuda:{cfg['GPU_ID']}")
-        
-        if using_ddp :
-            console.print(f"DDP with {world_size} GPUs")
         
         init_seed(cfg["SEED"])
         
@@ -110,26 +109,32 @@ def main(cfg: dict) :
         )
         results = trainer.train(
             start_epoch, end_epoch, cfg,
-            class_alpha=cls_freq.to(device),
-            gamma=2
+            class_alpha=cfg["LOSS"]["ALPHA"],
+            gamma=cfg["LOSS"]["GAMMA"],
         )
 
     finally :
 
-        if rank == 0 :
+        # Write training result and config to json file
+        if rank == 0 and results is not None :
 
             # Print training result
             console.print(f"Training results (Epoch {results[-1]['epoch']}):")
             console.print(results[-1])
 
             # Store result locally
-            with open("results1.json", "w") as file :
-                json.dump(results, file, indent=4, ensure_ascii=False)
-            console.print("Training results saved at \"results.json\"")
+            result_path = os.path.join(cfg["SAVE_DIR"], "logs", cfg["SAVE_SUB_NAME"], "results.json")
+            json_write = {}
+            json_write["config"] = cfg
+            json_write["result"] = results
+            with open(result_path, "w") as file :
+                json.dump(json_write, file, indent=4, ensure_ascii=False)
+            console.print(f"Training results saved at \"{result_path}\"")
 
         # Ensure the process group is destroyed
-        if using_ddp : dist.destroy_process_group()
-        console.print("Destroyed process group.")
+        if using_ddp :
+            dist.destroy_process_group()
+            console.print("Destroyed process group.")
 
 # Initialize random seeds
 def init_seed(seed: int, cuda_deterministic=True) :
@@ -207,6 +212,7 @@ def load_class_entropy(cfg) -> torch.Tensor :
 # Load datasets from csv file and apply preprocessing
 def load_dataset(cfg: dict, using_ddp: bool = False, rank: int = 0) -> "dict[str, DataLoader]":
     # Transforms
+    # TODO: Calculate mean and std of dataset
     train_trfs = transforms.Compose([
         transforms.ToTensor(),
         transforms.Resize((256, 256)),
@@ -239,7 +245,7 @@ def load_dataset(cfg: dict, using_ddp: bool = False, rank: int = 0) -> "dict[str
         train_dataset,
         batch_size=train_ba_size,
         drop_last=True,
-        shuffle=False if using_ddp else True,
+        shuffle=not using_ddp,
         num_workers=cfg["WORKERS"],
         sampler=train_sampler
     )
@@ -267,6 +273,12 @@ if __name__ == "__main__":
     try :
         cfgparser = CfgParser(config_path="./cfg/Setting.yml")
         cfg = cfgparser.cfg_dict
+        console.print(cfg)
+        console.print("This is the config of training.")
+        console.print(
+            "Make sure to run \"make_image_csv.py\""
+            ", set up configs and complete preliminaries.", style="yellow")
+        input("Press ENTER to continue > ")
         main(cfg)
     except Exception :
         console.print_exception(show_locals=False)

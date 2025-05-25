@@ -1,3 +1,9 @@
+'''
+Check all files in database.
+Remove non-image files and images failed to open.
+'''
+
+
 from glob import glob
 import os
 from PIL import Image
@@ -18,6 +24,10 @@ for entry in image_list :
 
 print(f"Failed count: {len(failed)}")
 print(failed)
+
+if not failed :
+    print("No failed images. Done.")
+    exit(0)
 
 input("Press enter to delete failed images > ")
 

@@ -2,7 +2,7 @@
 metrics.py
 
 Defines matrics to evaluate the model
-Defines a function to evaluate the model on validation set
+Defines a function to evaluate the model on dataset
 '''
 
 
@@ -15,8 +15,6 @@ from rich import get_console
 
 console = get_console()
 
-#? Calculate accuracy for multi-label classification
-
 # Calculate TP, FP, FN and TN for a batch
 def cal_tp_fp_fn_tn(pred: torch.Tensor, label: torch.Tensor):
     '''
@@ -28,7 +26,7 @@ def cal_tp_fp_fn_tn(pred: torch.Tensor, label: torch.Tensor):
         `pred` and `label` are both of dimenison `[batch_size, num_classes]`
 
     Return :
-        `tp`, `fp`, `fn`, `tn` of the batch, of dimension `[num_classes]`
+        `tp`, `fp`, `fn`, `tn` of, of dimension `[num_classes]`
     '''
 
     tp = torch.sum((pred * label) != 0, dim=0)
@@ -39,6 +37,7 @@ def cal_tp_fp_fn_tn(pred: torch.Tensor, label: torch.Tensor):
     return tp, fp, fn, tn
 
 # Calculate F1 score for a batch
+#? class_f1 is disabled due to error when training with DDP
 def cal_f1_score_acc(
     tp: torch.Tensor, fp: torch.Tensor, fn: torch.Tensor, tn: torch.Tensor,
     alt_macrof1 = False,
@@ -118,7 +117,8 @@ def cal_f1_score_acc(
     return metrics
 
 # Calculate hamming accuracy and zero accuracy for a batch
-def cal_ham_zero_acc(logits: torch.Tensor, label: torch.Tensor):
+#? Not used in training
+def cal_ham_zero_acc(pred: torch.Tensor, label: torch.Tensor):
     '''
     Calculate hamming loss and zero accuracy for a batch of predictions and labels
     
@@ -126,16 +126,17 @@ def cal_ham_zero_acc(logits: torch.Tensor, label: torch.Tensor):
     Zero accuracy is the ratio of correct-predicted data to all data.
     
     Arguments :
-        `logits` and `label` are both of dimenison `[batch_size, num_classes]`
-        `logits` should be either 0 or 1
+        pred `Tensor`: Prediction result, containing only 0 and 1
+        label `Tensor`: Ground-truth label, containing only 0 and 1
+        `pred` and `label` are both of dimenison `[batch_size, num_classes]`
     
     Return :
         `dict` contains `ham_loss` and `zero_acc`
     '''
     
-    err = (logits != label).sum(dim=1)
-    ham_loss = err.sum() / logits.numel()
-    zero_acc = 1 - err.count_nonzero() / len(logits)
+    err = (pred != label).sum(dim=1)
+    ham_loss = err.sum() / pred.numel()
+    zero_acc = 1 - err.count_nonzero() / len(pred)
     
     return {
         "ham_loss": ham_loss,
@@ -146,7 +147,7 @@ def cal_ham_zero_acc(logits: torch.Tensor, label: torch.Tensor):
 def cal_error_nums(pred: torch.Tensor, label: torch.Tensor) :
     '''
     A helper function to calculate numbers of error prediction in a batch.
-    Used for Hamming accuracy and Zero accuracy after the entire dataset is evaluated.
+    Return values are used for hamming loss and zero accuracy after the entire dataset is evaluated.
 
     Arguments :
         pred `Tensor`: Prediction result, containing only 0 and 1
@@ -172,6 +173,7 @@ def cal_acc(logits: torch.Tensor, label: torch.Tensor):
 
 # Evaluate the model on a dataset
 # Use specific weight factor of focal loss α for each class
+#? class_f1 is disabled due to error when training with DDP
 @torch.no_grad()
 def evaluate_dataset(
     model: nn.Module,
@@ -188,6 +190,7 @@ def evaluate_dataset(
     
     Arguments :
         cate_num `int`: Number of categories
+        class_f1: Return F1 score of each class
         class_alpha `Tensor`: Alpha α of focal loss for each class. Each value is in range [0, 1]
         gamma `float`: Exponent of the modulating factor (1 - p_t) to balance easy vs hard examples.
 
@@ -243,6 +246,7 @@ def evaluate_dataset(
 
     # Record loss and metrics
     valid_metrics_results = cal_f1_score_acc(tp, fp, fn, tn, class_f1=class_f1)
+    #? Use `float` to ensure all values are not Tensor
     record_dict["valid_microf1"]     = float(valid_metrics_results["microf1"])
     record_dict["valid_macrof1"]     = float(valid_metrics_results["macrof1"])
     record_dict["valid_micro_acc"]   = float(valid_metrics_results["micro_acc"])

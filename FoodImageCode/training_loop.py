@@ -2,6 +2,7 @@
 training_loop.py
 
 Defines `Trainer` class and training loop for the training task
+After each epoch, the model checkpoint and evaluation results are saved in `Results` folder.
 '''
 
 import os
@@ -31,7 +32,7 @@ class Trainer():
     The log files are created by tensorboard `SummaryWriter`
     
     Arguments :
-        dataset `dict[str, FoodDataset]`: Contains "train" and "valid" keys for train set and val set
+        dataset `dict[str, FoodDataset]`: Contains `train` and `valid` keys for train set and val set
         model `ModifiedResNet50`: CNN classification model to train
         opt: `Optimizer`: Pytorch Optimizer
         device: `int|str`: CPU or CPU
@@ -67,7 +68,7 @@ class Trainer():
         
         # Specify saved model name and path
         date = f"{datetime.datetime.now().month}_{datetime.datetime.now().day}"
-        sub_dir = self.cfg.get("SAVE_SUB_DIR", date)
+        sub_dir = self.cfg.get("SAVE_SUB_NAME", date)
         save_model_path = os.path.join(cfg["SAVE_DIR"], "checkpoints", sub_dir)
         log_path = os.path.join(cfg["SAVE_DIR"], "logs", sub_dir)
 
@@ -155,7 +156,6 @@ class Trainer():
                 total=total
             ):
                 
-                
                 img, label = img.to(self.device), label.to(self.device).to(torch.float32)
                 
                 out = self.model(img)       # Model output
@@ -189,7 +189,7 @@ class Trainer():
     
             # Record each epoch loss
             train_metrics_results = cal_f1_score_acc(tp, fp, fn, tn)
-            #? `float` to ensure all values are not Tensor
+            #? Use `float` to ensure all values are scalar
             record_dict["train_microf1"]     = float(train_metrics_results["microf1"])
             record_dict["train_macrof1"]     = float(train_metrics_results["macrof1"])
             record_dict["train_micro_acc"]   = float(train_metrics_results["micro_acc"])
@@ -205,8 +205,8 @@ class Trainer():
                     self.valid_dataloader,
                     self.class_num,
                     self.device,
-                    class_alpha,
-                    gamma
+                    class_alpha=class_alpha,
+                    gamma=gamma
                 )
                 record_dict.update(valid_results)
             
