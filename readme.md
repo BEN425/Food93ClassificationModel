@@ -1,6 +1,7 @@
-# Getting Start 
+# Getting Start
 
 Environment：
+
 <table>
     <tr>
         <td>Python</td>
@@ -54,7 +55,6 @@ Environment：
 
 Pytorch and CUDA version depend on your GPU.
 
-
 1. Put your database in `Database` folder, see **Database** section for detailed file structure.
 2. `cd utility`
 3. Run `calc_class_freq_entropy.py` to generate class frequencies and entropies files for focal loss. You can also run other scripts to check the database.
@@ -64,50 +64,58 @@ Pytorch and CUDA version depend on your GPU.
 7. Run `main.py` to start training.
 8. Retrieve training results in `FoodImageCode/Results` folder, including model checkpoints and tensorboard logs.
 
-
 # Database
 
-- Folder：Database
-- Name：AI_SingleFood_database_0310
-- Categories：93, multi-class
-- Image Count：259504
-- Image Format：**JPG, PNG, WEBP, AVIF**, need to install `pillow-avif-plugin` to support AVIF format
+Folder：Database
+
+Image Format：**JPG, PNG, WEBP, AVIF**, need to install `pillow-avif-plugin` to support AVIF format
+
+Categories：93, multi-class
+
+-   single_food_with_preprocess_0503
+    -   Image COunt：18801
+-   AI_SingleFood_database_0310
+    -   Image Count：259504
 
 ### Discription
-Merged *AI Food Database* and *Single Food Database*.
+
+Merged _AI Food Database_ and _Single Food Database_.
 
 If an image is multi-class, it will exist repeatedly in multiple folders. For example：if image `fruit.jpg` has both apple and orange classes, it exists both in apple and orange folders.
-- *AI Food* has 372095 images and contains both eastern and western food. Most food images are combinational food. The images are collected from existing datasets.
-- *Single Food* has 25647 images. Most food images only have a single food and are Taiwanese food. The images are collected from internet.
+
+-   _AI Food_ has 372095 images and contains both eastern and western food. Most food images are combinational food. The images are collected from existing datasets.
+-   _Single Food_ has 25647 images. Most food images only have a single food and are Taiwanese food. The images are collected from internet.
 
 ### File Structure
+
 4 levels of folders
-- First Level：6 Categories Food (六大類食物) without 乳品類 and 其他. Index through 1 to 6 without 4 and 7
-    - `1_CerealsGrainsTubersAndRoots`：全榖雜糧類
-    - `2_OilFatNutAndSeed`：油脂與堅果種子類
-    - `3_FishMeatAndEgg`：豆魚蛋肉類
-    - `5_Vegetable`：蔬菜類
-    - `6_Fruit`：水果類
-- Second Level：13 Categories. Index through A to N without M
-    - `A_CeralsGrainsTubersAndRoots`
-    - `B_FatsAndOils`
-    - `C_Poultry`
-    - `D_Meat`
-    - `E_Seafood`
-    - `F_OtherProteinrichFoods`
-    - `G_Vegetables`
-    - `H_Fruits`
-    - `I_RefreshmentAndSnacks`
-- Third Level：Further divides second levels. Appends number after the second level indices. For example：`A1_RiceAndProducts` is a subclass of `A_CeralsGrainsTubersAndRoots`
-- Fourth Level：Food names under the thrid level. **93 categories** in total. For example：`Congee` and `Rice` are subclasses of `A1_RiceAndProducts`
+
+-   First Level：6 Categories Food (六大類食物) without 乳品類 and 其他. Index through 1 to 6 without 4 and 7
+    -   `1_CerealsGrainsTubersAndRoots`：全榖雜糧類
+    -   `2_OilFatNutAndSeed`：油脂與堅果種子類
+    -   `3_FishMeatAndEgg`：豆魚蛋肉類
+    -   `5_Vegetable`：蔬菜類
+    -   `6_Fruit`：水果類
+-   Second Level：13 Categories. Index through A to N without M
+    -   `A_CeralsGrainsTubersAndRoots`
+    -   `B_FatsAndOils`
+    -   `C_Poultry`
+    -   `D_Meat`
+    -   `E_Seafood`
+    -   `F_OtherProteinrichFoods`
+    -   `G_Vegetables`
+    -   `H_Fruits`
+    -   `I_RefreshmentAndSnacks`
+-   Third Level：Further divides second levels. Appends number after the second level indices. For example：`A1_RiceAndProducts` is a subclass of `A_CeralsGrainsTubersAndRoots`
+-   Fourth Level：Food names under the thrid level. **93 categories** in total. For example：`Congee` and `Rice` are subclasses of `A1_RiceAndProducts`
 
 ### Other files
-- `class.txt`：IDs of 93 classes used in training and inference
-- `class_freq.txt`：Relative frequency of each class.
-- `class_entropy.txt`：Entropy (self-information) of each class.
-- `FoodSeg_cate_mapping.csv`：Mapping of FoodSeg103 class names to 93 class names.
-- `id_mapping.csv`：Mapping of FoodSeg103 class ids to 93 class ids.
 
+-   `class.txt`：IDs of 93 classes used in training and inference
+-   `class_freq.txt`：Relative frequency of each class.
+-   `class_entropy.txt`：Entropy (self-information) of each class.
+-   `FoodSeg_cate_mapping.csv`：Mapping of FoodSeg103 class names to 93 class names.
+-   `id_mapping.csv`：Mapping of FoodSeg103 class ids to 93 class ids.
 
 # Code
 
@@ -115,83 +123,89 @@ Folder：FoodImageCode
 
 ### File Structure
 
-- `cfg`
-    - `Setting.yml`：Sets various options of training and inference.
-- `model`
-    - `ResNet_modified.py`：Modified ResNet50 model by 嘉宏, re-written in Pytorch by 品潔. The input image size is 224x224x3. Output size is defined in `Setting.yml`: `MODEL`, `CATEGORY_NUM` without sigmoid or softmax.
-- `Results`
-    - `checkpoints`：Model chckpoints generated during training.
-    - `logs`：Training results generated by `SummaryWriter` during training. Can be viewed by Tensorboard
-- `csv`
-    - CSV files are generated by `make_image_csv.py`. Each csv file contains the path and labels of images, the labels are in multi-hot format.
-    - Read **Creating CSV files** section for details.
-- `main.py`：Main program. It reads the datasets from train/valid csv files as well as config file from `./cfg/Setting.yml`, loads the model and starts the training process.
-- `dataset.py`：Defines `FoodDataset` class which inherits Pytorch `Dataset` class. It reads data from a csv file.
-- `training_loop.py`：Defines `Trainer` class for the training process.
-- `metrics.py`：Defines metrics such as accuracy, f1 score and valid set evaluation
-- `loss.py`：Defines loss functions
-- `cfgparser.py`：Defines `CfgParser` class to read yml file.
-- `make_image_csv.py`：Seperates the food images into training, test and validation sets, and stores image paths and labels in csv files.
-    - Read **Creating CSV files** section for details.
-- `test_and_confusion_matrix.py`：Not used.
+-   `cfg`
+    -   `Setting.yml`：Sets various options of training and inference.
+-   `model`
+    -   `ResNet_modified.py`：Modified ResNet50 model by 嘉宏, re-written in Pytorch by 品潔. The input image size is 3x224x224 (CxWxH). Output size is defined in `Setting.yml`: `MODEL`, `CATEGORY_NUM`.
+-   `Results`
+    -   `checkpoints`：Model chckpoints generated during training.
+    -   `logs`：Training results generated by `SummaryWriter` during training. Can be viewed by Tensorboard.
+    -   Both `checkpoints` and `logs` contain subfolders specified in `Setting.yml`.
+-   `csv`
+    -   CSV files are generated by `make_image_csv.py`. Each csv file contains the path and labels of images, the labels are in multi-hot format.
+    -   The path of images are relative to the project path which is specified in `Setting.yml`.
+    -   Read **Creating CSV files** section for details.
+-   `main.py`：Main program. It reads the datasets from train/valid csv files as well as config file from `./cfg/Setting.yml`, loads the model and starts the training process.
+-   `dataset.py`：Defines `FoodDataset` class which inherits Pytorch `Dataset` class. It reads data from a csv file.
+-   `training_loop.py`：Defines `Trainer` class for the training process.
+-   `metrics.py`：Defines metrics such as accuracy, f1 score and valid set evaluation
+-   `loss.py`：Defines loss functions
+-   `cfgparser.py`：Defines `CfgParser` class to read yml file.
+-   `make_image_csv.py`：Seperates the food images into training, test and validation sets, and stores image paths and labels in csv files.
+    -   Read **Creating CSV files** section for details.
+-   `test_and_confusion_matrix.py`：Not used.
 
 ### Configs
 
 Configs are in `./FoodImageCode/cfg/Setting.yml`. The config file will be parsed by `CfgParser` class in `./FoodImageCode/cfgparser.py`.
 The result is `dict` combining `PARSER_SETTING` and `TRAIN_SETTING`.
 
-- `PARSING_SETTING`
-    - `SEED`
-    - `GPU_ID`
-    - `WORKERS`
-    - `EPOCHS`：Total training epochs
-    - `BATCH_SIZE`：Training batch size
-    - `EVAL_BATCH_SIZE`：Validation batch size
-- `TRAIN_SETTING`
-    - `RESUMEL`：Resume from the last checkpoint
-    - `CHECKPOINT_PATH`
-    - `TEST_METRICS`
-    - `DATA_BASE_DIR`：Path of the database used in training
-    - `FOODSEG_DIR`：Path of FoodSeg103 database
-    - `ALL_CSV_DIR`：CSV file containing all images. Only for debug, not used in training and inference.
-    - `TRAIN_CSV_DIR`, `VALID_CSV_DIR`, `TEST_CSV_DIR`：CSV files for training set, validation set and test set. Containing image paths and multi-hot labels.
-    - `FOODSEG_CSV_DIR`
-    - `SAVE_DIR`：Path to save training results, including model checkpoints and tensorboard logs
-    - `MODEL`
-        - `NAME`
-        - `INCHANNELS`
-        - `OUTCHANNELS`
-        - `CATEGORY_NUM`
-        - `LR`：Learning rate
-        - `MOMENTUM`：Momentum for SGD optimizer
-        - `WEIGHT_DECAY`：Weight decay for SGD and Adam optimizer
+-   `PARSING_SETTING`
+    -   `SEED`
+    -   `GPU_ID`
+    -   `WORKERS`
+    -   `EPOCHS`：Total training epochs
+    -   `BATCH_SIZE`：Training batch size
+    -   `EVAL_BATCH_SIZE`：Validation batch size
+-   `TRAIN_SETTING`
+    -   `ROOT`: Project path. The following paths are all relative to `ROOT`
+    -   `RESUME`：Resume from the last checkpoint
+    -   `CHECKPOINT_PATH`
+    -   `TEST_METRICS`: Whether to evaluate on valid set after each epoch.
+    -   `DATA_BASE_DIR`：Path of the database used for training
+    -   `FOODSEG_DIR`：Path of FoodSeg103 database
+    -   `ALL_CSV_DIR`：CSV file containing all images. Only for debug, not used in training and inference.
+    -   `TRAIN_CSV_DIR`, `VALID_CSV_DIR`, `TEST_CSV_DIR`：Path of CSV files for training set, validation set and test set. Containing image paths and multi-hot labels.
+    -   `FOODSEG_CSV_DIR`
+    -   `SAVE_DIR`：Path to save training results, including model checkpoints and tensorboard logs
+    -   `SAVE_SUB_NAME`: Subfolder name in `SAVE_DIR/checkpoints` and `SAVE_DIR/logs` to store the current training progress.
+    -   `MODEL`
+        -   `NAME`
+        -   `INCHANNELS`: Input channel numbers. Usually 3 for RGB images.
+        -   `OUTCHANNELS`: 64 for ResNet50.
+        -   `CATEGORY_NUM`: 93
+        -   `LR`：Learning rate
+        -   `MOMENTUM`：Momentum for SGD optimizer
+        -   `WEIGHT_DECAY`：Weight decay for SGD and Adam optimizer
+        -   `CBAM`, `SENET`: Whether to add CBAM and SENet layers
+    -   `LOSS`: Specify `ALPHA` and `GAMMA` parameters of focal loss
 
 ### Creating CSV files
 
 CSV files are read before training to access the path and labels of all images. CSV files are seperated in training set, test set and validation set. All CSV files are generated by `make_image_csv.py`. The path of CSV files are in `Setting.yml`
 
-In a CSV file, each line represents an image. The first item is path. The rest items are either 0 or 1, corresponding to multi-hot label of the image.
+In a CSV file, each line represents an image. The first item is path relative to the project path. The rest items are either 0 or 1, corresponding to multi-hot label of the image.
 
 ### Loss Functions & Metrics
 
 Loss functions are in `loss.py`. BCE loss and L2 regularization are used in old code. New code uses focal loss.
 
-- `cal_loss`：Uses BCE loss from Pytorch. Takes sigmoid of model outputs and multi-hot labels as inputs.
-- `cal_focal_loss`：Uses focal loss from Torchvision. This loss function implicitly applies sigmoid to logits. So the inputs do not need to apply sigmoid.
-- `cal_class_focal_loss`：Uses focal loss like `cal_focal_loss`. It allows user to specify alpha for each class and gamma.
-- `cal_l2_regularization`：Calculates L2 regularization.
+-   `cal_loss`：Uses BCE loss from Pytorch. Takes sigmoid of model outputs and multi-hot labels as inputs.
+-   `cal_focal_loss`：Uses focal loss from Torchvision. This loss function implicitly applies sigmoid to logits. So the inputs do not need to apply sigmoid.
+-   `cal_class_focal_loss`：Uses focal loss like `cal_focal_loss`. It allows user to specify alpha for each class and gamma.
+-   `cal_l2_regularization`：Calculates L2 regularization.
 
 Metrics are in `metrics.py`, containg precision, recall, F1 score, hamming loss and zero accuracy. Note that micro accuracy does not suitable for multic-label because it includes TN.
 
-- `cal_f1_score_acc`：Calculates F1 score. Takes sigmoid of model outputs as input.
-- `cal_ham_zero_acc`：Calculates hamming loss and zero accuracy. Takes thresholding result after sigmoid of model outputs (to convert the value to either 0 or 1) as input.
-- `cal_acc`：Calculates accuracy for single-label. Takes raw model outputs as input.
-- `evaluate_valid_dataset`, `evaluate_valid_dataset_new`：Evaluates model on validation set. The function is called after each epoch. The new version uses focal loss, zero accuracy and hamming loss. The original version uses BCE loss and L2 regularization.
-`evaluate_valid_dataset_new2`: This version lets user specify alpha for each class and gamma parameter for focal loss.
+-   `cal_tp_fp_fn_tn`: Calculate TP, FP, FN and TN of all classes in a batch.
+-   `cal_f1_score_acc`：Calculates F1 score.
+-   `cal_ham_zero_acc`：Calculates hamming loss and zero accuracy.
+-   `cal_acc`：Calculates accuracy for single-label.
+-   `evaluate_valid_dataset`, `evaluate_valid_dataset_class_acc`：Evaluates model on validation set. The function is called after each epoch.
 
 ### Training Loop
 
-Defined in `training_loop.py`. The original `training_loop` uses BCE loss and L2 regularization. The new version `training_loop_new` uses focal loss, zero accuracy and hamming loss.
+Defined in `training_loop.py`.
 
 Training results (metrics, loss and model chckpoint) are stored in `Results` folder. The results will update after each training epoch.
 
@@ -200,3 +214,13 @@ Training results (metrics, loss and model chckpoint) are stored in `Results` fol
 Folder：utility
 
 Some scripts used for debugging and generating metadata before training.
+
+# Reference
+
+-   <a href=https://arxiv.org/abs/1512.03385>Deep Residual Learning for Image Recognition</a>
+-   <a href=https://arxiv.org/abs/1412.6980>Adam: A Method for Stochastic Optimization</a>
+-   <a href=https://arxiv.org/abs/1708.02002>Focal Loss for Dense Object Detection</a>
+-   <a href=https://arxiv.org/abs/1807.06521>CBAM: Convolutional Block Attention Module</a>
+-   <a href=https://arxiv.org/abs/1709.01507>Squeeze-and-Excitation Networks</a>
+-   <a href=https://xiongweiwu.github.io/foodseg103.html>A Large-Scale Benchmark for Food Image Segmentation</a>
+-   <a href=https://pytorch.org/>PyTorch</a>

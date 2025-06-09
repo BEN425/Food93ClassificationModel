@@ -4,6 +4,8 @@ dataset.py
 This file defines `FoodDataset` class for the food database
 '''
 
+import os
+
 import torch
 import torch.utils.data as data
 import torchvision.transforms as transforms
@@ -18,24 +20,34 @@ class FoodDataset(data.Dataset):
     Dataset containing SingleFood and AIFood
     
     Arguments :
-        root `str`: Path to csv file containing paths and labels of all image files. \
+        csv_path `str`: Path to csv file containing paths and labels of all image files. \
         CSV file is seperated by comma, the first item is path to the image, the rests are labels in multi-hot format.
         Ex (an image with label 2 and 4): `./path/to/image.jpg,0,0,1,0,1`
+        root `str`: Base path of image paths in the csv file. If None, the original path is used
         transform `Transform`: Transformation to be apply on images. If not specified, \
         a default transform is applied to convert PIL Image to Tensor.
+        hsv `bool`: Add 3 extra channels for HSV to the image (Total 6 channels: RGB + HSV)
     '''
     
     def __init__(self, 
-            root: str, 
-            transform
+            csv_path: str,
+            root: str = None,
+            transform = None,
+            hsv = False,
         ):
         
-        self.transform = transform
+        # Use default transformation if not specified
+        # Crop the image to 244x244 for ResNet50 input
+        self.transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Resize((256, 256)),
+            transforms.CenterCrop(224),
+        ]) if transform is None else transform
         
         # List containing paths and labels of all images
         # Each label is in multi-hot form
         self.datalist = []
-        with open(root, "r") as file:
+        with open(csv_path, "r") as file:
             csv_reader = csv.reader(file, delimiter=",")
             for img_path, *label in csv_reader:
                 self.datalist.append((
@@ -43,23 +55,27 @@ class FoodDataset(data.Dataset):
                     list(int(i) for i in label)
                 ))
         
+        self.root = root
+        self.add_hsv = hsv
+        
         #print(self.datalist)
 
-    def get_image(self, img_path: str, transform=None) -> torch.Tensor:
+    def _get_image(self, img_path: str) -> torch.Tensor:
         '''
         Open an image and apply the transform
         '''
         
+        if self.root is not None :
+            img_path = os.path.join(self.root, img_path)
         img = Image.open(img_path).convert("RGB")
-        # Default transformation
-        # Crop the image to 244x244 for ResNet50 input
-        if transform is None:
-            transform = transforms.Compose([
-                transforms.ToTensor(),
-                transforms.Resize((256, 256)),
-                transforms.CenterCrop(224),
-            ])
-        img = transform(img)
+        img = self.transform(img)
+        
+        # Add 3 extra channels for HSV
+        if self.add_hsv :
+            img_hsv = img.convert("HSV")
+            img_hsv = self.transform(img_hsv)
+            img = torch.vstack((img, img_hsv))
+
         return img
 
     def __getitem__(self, index: int):
@@ -72,7 +88,7 @@ class FoodDataset(data.Dataset):
         '''
         
         img_path, label = self.datalist[index]
-        img = self.get_image(img_path, self.transform)
+        img = self._get_image(img_path)
         return img, torch.tensor(label)
     
     def __len__(self):
@@ -92,7 +108,7 @@ if __name__ == "__main__":
         ])
 
     dataset = FoodDataset(
-        root=csv_dir,
+        csv_path=csv_dir,
         transform=transform
     )
     

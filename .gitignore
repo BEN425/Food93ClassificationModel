@@ -19,3 +19,4 @@ Database/*
 !Database/class.txt
 !Database/id_mapping.csv
 !Database/FoodSeg_cate_mapping.csv
+!Database/class chinese.txt

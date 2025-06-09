@@ -28,7 +28,7 @@ val_csv_path   = cfg["VALID_CSV_DIR"]
 random.seed(cfg["SEED"])
 
 # Check whether a file is an image file
-def check_image(file: str) :
+def check_filename(file: str) :
     filename = file.lower()
     return filename.split(".")[-1].lower() in [
         "jpg", "jpeg", "png", "avif", "webp"
@@ -93,7 +93,7 @@ for six_category in os.scandir(database_path):
                 #* 4th level: image files (.jpg, .jpeg, .png, etc)
                 for image_file in os.scandir(third_category.path) :
                     filename = image_file.name
-                    if not image_file.is_file() or not check_image(filename) :
+                    if not image_file.is_file() or not check_filename(filename) :
                         continue
 
                     # Avoid repeated file name
@@ -164,7 +164,11 @@ def write_to_csv(file_path: str, dataset: "list[dict]") -> None:
             mh_label = [0] * cfg["MODEL"]["CATEGORY_NUM"]
             for label in image["labels"] :
                 mh_label[label] = 1
-            writer.writerow((image["path"], *mh_label))
+
+            # Get relative path
+            path = os.path.relpath(image["path"], "..").replace("\\", "/")
+            # os.path.relpath(image["path"], cfg["ROOT"])
+            writer.writerow((path, *mh_label))
 
 # Write split datasets to csv files
 write_to_csv(train_csv_path, train_set)
