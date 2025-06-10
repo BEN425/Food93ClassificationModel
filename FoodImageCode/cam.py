@@ -56,7 +56,7 @@ def class_activation_map(model: nn.Module, image: torch.Tensor) -> np.ndarray :
         max_val = cam.max()
         cams[i] = (cam - min_val) / (max_val - min_val + 1e-6)
 
-    return cams
+    return cams.squeeze().detach().cpu().numpy()
 
 # Show CAM and overlapped CAM
 @torch.no_grad()
