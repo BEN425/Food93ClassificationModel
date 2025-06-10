@@ -3,6 +3,10 @@
 *.txt
 *.docx
 *.zip
+*.jpg
+*.png
+*.avif
+*.webp
 
 Results/
 inference_results/
@@ -13,6 +17,7 @@ csv/
 twcc/
 zips/
 image/
+test/
 compress.py
 
 Database/*
