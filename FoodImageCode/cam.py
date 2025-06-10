@@ -4,7 +4,7 @@ CAM relative functions
 
 
 import torch
-from torch.func import vmap
+# from torch.func import vmap # Not available in older version of Pytorch
 import torch.nn as nn
 import torch.nn.functional as F
 
@@ -30,6 +30,8 @@ def class_activation_map(model: nn.Module, image: torch.Tensor) -> np.ndarray :
         
     '''
 
+    assert image.shape == (1, 3, 224, 224), "Input dimension should be [1, 3, 224, 224]"
+
     # Get the feature map of the last conv layer and the FC layer weights
     feature_map = model.convol_last_layer(image)  # shape: [1, 2048, 14, 14]
     fc_weights = model.fc.weight.data             # shape: [93, 2048]
@@ -42,19 +44,19 @@ def class_activation_map(model: nn.Module, image: torch.Tensor) -> np.ndarray :
     # cams = cams.squeeze(0)  # shape: [93, 14, 14]
 
     # Normalize each class (channel) separately
-    def normalize_channel(cam):
-        min_val = cam.min()
-        max_val = cam.max()
-        return (cam - min_val) / (max_val - min_val + 1e-6)
-    return vmap(normalize_channel, 2, 2)(cams)
-
-    # for i in range(cams.shape[0]):
-    #     cam = cams[i]
+    # def normalize_channel(cam):
     #     min_val = cam.min()
     #     max_val = cam.max()
-    #     cams[i] = (cam - min_val) / (max_val - min_val + 1e-6)
+    #     return (cam - min_val) / (max_val - min_val + 1e-6)
+    # return torch.vmap(normalize_channel, 2, 2)(cams)
 
-    # return cams.detach().cpu().numpy()  # shape: [93, 14, 14]
+    for i in range(cams.shape[0]):
+        cam = cams[i]
+        min_val = cam.min()
+        max_val = cam.max()
+        cams[i] = (cam - min_val) / (max_val - min_val + 1e-6)
+
+    return cams
 
 # Show CAM and overlapped CAM
 @torch.no_grad()

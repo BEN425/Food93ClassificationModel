@@ -261,7 +261,7 @@ def evaluate_dataset(
 
 # Same with `evaluate_dataset` but also include accuracy of each class, total tp, fp, fn and tn
 @torch.no_grad()
-def evaluate_dataset_class_acc(
+def evaluate_dataset_class_acc( 
     model: nn.Module,
     dataloader: Dataloader,
     cate_num: int,
@@ -342,7 +342,7 @@ def evaluate_dataset_class_acc(
 
         # Confusion Matrix
         for l, p in zip(label, pred) :
-            cls_ids = l.nonzero().int()
+            cls_ids = l.nonzero().long()
             for id in cls_ids :
                 p_ = p.clone().int()
                 p_[ cls_ids[id != cls_ids] ] = 0

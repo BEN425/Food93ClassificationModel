@@ -8,7 +8,8 @@ PARSER_SETTING:
     EVAL_BATCH_SIZE: 10
 
 TRAIN_SETTING:
-    ROOT: "D:/MSoCLab/ai/code"
+    # ROOT: "D:/MSoCLab/ai/code"
+    ROOT: "/home/msoc/ben"
     RESUME: False
     CHECKPOINT_PATH: "FoodImageCode/Results/checkpoints/5_14/5_14_ModifiedResNet50_93_epoch_4.pth.tar"
     TEST_METRICS: True

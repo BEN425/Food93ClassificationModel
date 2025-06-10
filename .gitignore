@@ -18,6 +18,7 @@ twcc/
 zips/
 image/
 test/
+test results/
 compress.py
 
 Database/*
@@ -25,3 +26,4 @@ Database/*
 !Database/id_mapping.csv
 !Database/FoodSeg_cate_mapping.csv
 !Database/class chinese.txt
+!FoodImageCode/test.ipynb
