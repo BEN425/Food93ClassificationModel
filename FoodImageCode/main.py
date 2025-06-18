@@ -252,8 +252,8 @@ def load_dataset(cfg: dict, using_ddp: bool = False, rank: int = 0) -> "dict[str
     train_ba_size = cfg["BATCH_SIZE"]       // dist.get_world_size() if using_ddp else cfg["BATCH_SIZE"]
     valid_ba_size = cfg["EVAL_BATCH_SIZE"]  // dist.get_world_size() if using_ddp else cfg["EVAL_BATCH_SIZE"]
 
-    train_dataset = FoodDataset(cfg["TRAIN_CSV_DIR"], transform=train_trfs, hsv=False)
-    valid_dataset = FoodDataset(cfg["VALID_CSV_DIR"], transform=valid_trfs, hsv=False)
+    train_dataset = FoodDataset(cfg["TRAIN_CSV_DIR"], transform=train_trfs, hsv=False, root=cfg["ROOT"])
+    valid_dataset = FoodDataset(cfg["VALID_CSV_DIR"], transform=valid_trfs, hsv=False, root=cfg["ROOT"])
 
     #? Use `DistributedSampler` for DDP 
     train_sampler = DistributedSampler(train_dataset, rank=rank, shuffle=True)  if using_ddp else None
