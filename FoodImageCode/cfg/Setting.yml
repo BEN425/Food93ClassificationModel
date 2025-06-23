@@ -14,14 +14,14 @@ TRAIN_SETTING:
     CHECKPOINT_PATH: "FoodImageCode/Results/checkpoints/5_14/5_14_ModifiedResNet50_93_epoch_4.pth.tar"
     TEST_METRICS: True
     # data
-    DATA_BASE_DIR: "Database/only_ai_food"
-    # DATA_BASE_DIR: "Database/single_food_with_preprocess_0503"
+    # DATA_BASE_DIR: "Database/only_ai_food"
+    DATA_BASE_DIR: "Database/single_food_with_preprocess_0503"
     # DATA_BASE_DIR  : 'Database/aisingle_food_preprocess_0503'
     FOODSEG_DIR: "Database/FoodSeg103"
-    ALL_CSV_DIR: "FoodImageCode/csv/ai_food/AllFoodImage.csv"
-    TRAIN_CSV_DIR: "FoodImageCode/csv/ai_food/AllFoodImage_train_ratio811.csv"
-    VALID_CSV_DIR: "FoodImageCode/csv/ai_food/AllFoodImage_valid_ratio811.csv"
-    TEST_CSV_DIR: "FoodImageCode/csv/ai_food/AllFoodImage_test_ratio811.csv"
+    ALL_CSV_DIR: "FoodImageCode/csv/single_food/AllFoodImage.csv"
+    TRAIN_CSV_DIR: "FoodImageCode/csv/single_food/AllFoodImage_train_ratio811.csv"
+    VALID_CSV_DIR: "FoodImageCode/csv/single_food/AllFoodImage_valid_ratio811.csv"
+    TEST_CSV_DIR: "FoodImageCode/csv/single_food/AllFoodImage_test_ratio811.csv"
     FOODSEG_CSV_DIR: "FoodImageCode/csv/FoodSeg103.csv"
     SAVE_DIR: "FoodImageCode/Results"
     SAVE_SUB_NAME: "6_19_aifood_nonorm"
