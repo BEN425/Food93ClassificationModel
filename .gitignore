@@ -16,7 +16,7 @@ inference_results/
 origin_image/
 .ipynb_checkpoints/
 __pycache__/
-csv/
+# csv/
 twcc/
 zips/
 image/
