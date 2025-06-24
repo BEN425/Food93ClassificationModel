@@ -145,6 +145,10 @@ def merge_image_cam(
         
     '''
 
+    # Show CAM of highest probability if there are no positive predictions
+    if len(pos_preds) == 0 and len(sorted_preds) > 0:
+        pos_preds = [sorted_preds[0]]
+
     # Resize image and convert to numpy array
     img_resize = img_original.resize((224, 224))
     img_resize = np.array(img_resize)
