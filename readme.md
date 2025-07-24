@@ -43,10 +43,11 @@
 
 1. 啟動環境：`pyenv local 3.8.13`, `source ./s2c/bin/activate`
 2. 檢查資料集中是否有問題：`cd utility`, `python check_labels.py`, `python ckech_image.py`
-2. 調整 `FoodImageCode/cfg/Setting.yml` 的設定，包含路徑、訓練參數等
-3. `cd ../FoodImageCode`
-4. 開始訓練：`python main.py`
-5. 訓練結果會存放在 `FoodImageCode/Results` 中，包含 checkpoints 與 tensorboard logs
+3. 調整 `FoodImageCode/cfg/Setting.yml` 的設定，包含路徑、訓練參數等
+4. `cd ../FoodImageCode`
+5. 清除 CUDA 記憶體：`nvidia-smi | grep 'python' | awk '{ print $5 }' | xargs -n1 kill -9`, `nvidia-smi`
+6. 開始訓練：`python main.py`
+7. 訓練結果會存放在 `FoodImageCode/Results` 中，包含 checkpoints 與 tensorboard logs
 
 # Database
 
