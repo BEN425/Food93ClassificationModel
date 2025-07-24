@@ -1,102 +1,76 @@
-# Getting Start
+# 環境
 
-Environment：
+#### 環境說明
 
-<table>
-    <tr>
-        <td>Python</td>
-        <td>3.7.13</td>
-    </tr>
-    <tr>
-        <td>Pytorch</td>
-        <td>1.12.1</td>
-    </tr>
-    <tr>
-        <td>EMA Pytorch</td>
-        <td>0.5.3</td>
-    </tr>
-    <tr>
-        <td>Pytorch CUDA</td>
-        <td>11.3</td>
-    </tr>
-    <tr>
-        <td>Torchvision</td>
-        <td>0.13.1</td>
-    </tr>
-    <tr>
-        <td>Tensorboard</td>
-        <td>2.11.2</td>
-    </tr>
-    <tr>
-        <td>JupyterLab</td>
-        <td>3.6.8</td>
-    </tr>
-    <tr>
-        <td>Pillow</td>
-        <td>9.4.0</td>
-    </tr>
-    <tr>
-        <td>pillow-avif-plugin</td>
-        <td>9.4.0</td>
-    </tr>
-    <tr>
-        <td>PyYAML</td>
-        <td>6.0.1</td>
-    </tr>
-    <tr>
-        <td>rich</td>
-        <td>13.8.1</td>
-    </tr>
-    <tr>
-        <td>tqdm</td>
-        <td>4.67.0</td>
-    </tr>
-</table>
+- Python：3.8.13
+- CUDA：cu113
+- 大多數套件的版本都在 `requirements.txt`，除了 `torch-scatter` 要另外安裝
 
-Pytorch and CUDA version depend on your GPU.
+#### 前置作業
 
-1. Put your database in `Database` folder, see **Database** section for detailed file structure.
-2. `cd utility`
-3. Run `calc_class_freq_entropy.py` to generate class frequencies and entropies files for focal loss. You can also run other scripts to check the database.
-4. Set up configs in `FoodImageCode/cfg/Setting.yml`, such as file path, hyperparameters, epochs and batch size.
-5. `cd ../FoodImageCode`
-6. Run `make_image_csv.py` to generate CSV files of the dataset.
-7. Run `main.py` to start training.
-8. Retrieve training results in `FoodImageCode/Results` folder, including model checkpoints and tensorboard logs.
+1. 安裝 pyenv：
+    1. `curl -fsSL https://pyenv.run | bash`
+    2. 將以下程式碼
+        ```bash
+        export PYENV_ROOT="$HOME/.pyenv"
+        [[ -d $PYENV_ROOT/bin ]] && export PATH="$PYENV_ROOT/bin:$PATH"
+        eval "$(pyenv init - bash)"
+        eval "$(pyenv virtualenv-init -)"
+        ```
+        複製到 `$HOME/.bashrc` 最後面，並重新啟動終端使其生效
+2. 安裝 bzip2：`sudo apt-get install build-essential zlib1g-dev libffi-dev libssl-dev libbz2-dev libreadline-dev libsqlite3-dev liblzma-dev libncurses-dev tk-dev`
+3. 安裝 sqlite3：`sudo apt-get install libsqlite3-dev`
+
+#### 架設環境
+
+1. 安裝 Python 版本：`pyenv install 3.8.13`
+2. 設定專案 Python 版本：`pyenv local 3.8.13`
+3. 建立虛擬環境：`python -m venv s2c `
+4. 進入環境：`source ./s2c/bin/activate`
+5. 安裝 Python 套件
+    - `pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu113`
+    - `pip install torch-scatter -f https://data.pyg.org/whl/torch-1.21.1+cu113.html --no-index`
+    - `pip list`
+    - `pip check`
+6. 修改 SAM 檔案，將 `mask_decoder.py`, `sam.py` 複製到 SAM Module 中：
+    - `cp ./modeling/mask_decoder.py ./s2c/lib/python3.8/site-packages/segment_anything/modeling/`
+    - `cp ./modeling/sam.py ./s2c/lib/python3.8/site-packages/segment_anything/modeling/`
+7. 下載 SAM model weights 放到 `./pretrained`：https://github.com/facebookresearch/segment-anything
+
+8. 將資料集放到 `Database` 資料夾, 詳細訊息可以查看章節 **Database**
+
+#### 訓練前準備
+
+1. 啟動環境：`pyenv local 3.8.13`, `source ./s2c/bin/activate`
+2. 檢查資料集中是否有問題：`cd utility`, `python check_labels.py`, `python ckech_image.py`
+2. 調整 `FoodImageCode/cfg/Setting.yml` 的設定，包含路徑、訓練參數等
+3. `cd ../FoodImageCode`
+4. 開始訓練：`python main.py`
+5. 訓練結果會存放在 `FoodImageCode/Results` 中，包含 checkpoints 與 tensorboard logs
 
 # Database
 
-Folder：Database
+資料夾：Database
 
-Image Format：**JPG, PNG, WEBP, AVIF**, need to install `pillow-avif-plugin` to support AVIF format
+圖片格式：**JPG, PNG, WEBP, AVIF**, AVIF 格式需要 `pillow-avif-plugin` 套件
 
-Categories：93, multi-class
+類別：93類, multi-class
 
--   single_food_with_preprocess_0503
-    -   Image COunt：18801
--   AI_SingleFood_database_0310
-    -   Image Count：259504
+包含 _AI Food Database_ 與 _Single Food Database_
 
-### Discription
+若一張圖片是 multi-label, 該圖片會同時出現在不同類別的資料夾中. Example：若 `fruit1.jpg` 同時包含 Apple, Orange 類別, 則會同時出現在 Apple 資料夾與 Orange 資料夾中
 
-Merged _AI Food Database_ and _Single Food Database_.
+### 資料夾結構
 
-If an image is multi-class, it will exist repeatedly in multiple folders. For example：if image `fruit.jpg` has both apple and orange classes, it exists both in apple and orange folders.
+總共有 4 層資料夾結構
 
--   _AI Food_ has 372095 images and contains both eastern and western food. Most food images are combinational food. The images are collected from existing datasets.
--   _Single Food_ has 25647 images. Most food images only have a single food and are Taiwanese food. The images are collected from internet.
-
-### File Structure
-
-4 levels of folders
-
--   First Level：6 Categories Food (六大類食物) without 乳品類 and 其他. Index through 1 to 6 without 4 and 7
+-   First Level：6 Categories Food (六大類食物) 不包含 _乳品類_ 和 _其他_， Index 為 1, 2, 3, 5, 6
     -   `1_CerealsGrainsTubersAndRoots`：全榖雜糧類
     -   `2_OilFatNutAndSeed`：油脂與堅果種子類
     -   `3_FishMeatAndEgg`：豆魚蛋肉類
     -   `5_Vegetable`：蔬菜類
     -   `6_Fruit`：水果類
--   Second Level：13 Categories. Index through A to N without M
+-   Second Level：13 Categories，Index 從 A 到 I
     -   `A_CeralsGrainsTubersAndRoots`
     -   `B_FatsAndOils`
     -   `C_Poultry`
@@ -106,22 +80,23 @@ If an image is multi-class, it will exist repeatedly in multiple folders. For ex
     -   `G_Vegetables`
     -   `H_Fruits`
     -   `I_RefreshmentAndSnacks`
--   Third Level：Further divides second levels. Appends number after the second level indices. For example：`A1_RiceAndProducts` is a subclass of `A_CeralsGrainsTubersAndRoots`
--   Fourth Level：Food names under the thrid level. **93 categories** in total. For example：`Congee` and `Rice` are subclasses of `A1_RiceAndProducts`
+-   Third Level：將第二層進行細分，Index 為英文+數字。Example：`A1_RiceAndProducts` 是 `A_CeralsGrainsTubersAndRoots` 的子類別
+-   Fourth Level：食物名稱本身，總共有 **93 categories**。Example：`Congee`, `Rice` 是 `A1_RiceAndProducts` 的子類別
 
-### Other files
+### 其他檔案
 
--   `class.txt`：IDs of 93 classes used in training and inference
--   `class_freq.txt`：Relative frequency of each class.
--   `class_entropy.txt`：Entropy (self-information) of each class.
--   `FoodSeg_cate_mapping.csv`：Mapping of FoodSeg103 class names to 93 class names.
--   `id_mapping.csv`：Mapping of FoodSeg103 class ids to 93 class ids.
+-   `class.txt`：93 類別食物的 ID 與名稱
+-   `class_freq.txt`：每個食物類別的比例
+-   `class_entropy.txt`：每個食物類別的 entropy (self-information)
+-   `FoodSeg_cate_mapping.csv`：FoodSeg103 類別名稱對應到 93 食物類別
+-   `id_mapping.csv`：FoodSeg103 類別 ID 對應到 93 食物類別 ID
+-   `class_chinese.txt`：食物類別的中文名稱
 
 # Code
 
-Folder：FoodImageCode
+資料夾：FoodImageCode
 
-### File Structure
+### 資料夾結構
 
 -   `cfg`
     -   `Setting.yml`：Sets various options of training and inference.

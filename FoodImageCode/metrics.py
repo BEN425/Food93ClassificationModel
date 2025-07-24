@@ -123,6 +123,7 @@ def cal_f1_score_acc(
 
 # Calculate hamming accuracy and zero accuracy for a batch
 #? Not used in training
+@torch.no_grad()
 def cal_ham_zero_acc(pred: torch.Tensor, label: torch.Tensor):
     '''
     Calculate hamming loss and zero accuracy for a batch of predictions and labels
@@ -149,6 +150,7 @@ def cal_ham_zero_acc(pred: torch.Tensor, label: torch.Tensor):
     }
 
 # Calculate numbers of error predictions
+@torch.no_grad()
 def cal_error_nums(pred: torch.Tensor, label: torch.Tensor) :
     '''
     A helper function to calculate numbers of error prediction in a batch.

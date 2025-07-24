@@ -14,7 +14,7 @@ import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
 # import torch.multiprocessing as mp
 
-from dataset import FoodDataset
+from dataset import FoodDataset, FoodDatasetWithMasks
 from training_loop import Trainer
 from model.ResNet_modified import ModifiedResNet
 from cfgparser import CfgParser
@@ -59,6 +59,14 @@ def main(cfg: dict) :
         if using_ddp :
             ddp_model = DDP(model, device_ids=[device])
 
+        # Load SAM model
+        if cfg["USE_CPM"] :
+            console.print("Loading SAM model...")
+            sam = load_sam_model(cfg)
+        else :
+            sam = None
+        
+
         # Optimizer, change to AdamW
         # opt = torch.optim.SGD(
         #     model.parameters(),
@@ -101,12 +109,13 @@ def main(cfg: dict) :
         # Training
         console.print("Training...")
         trainer = Trainer(
-            dataset,
-            ddp_model if using_ddp else model,
-            opt,
-            device,
-            cfg,
-            using_ddp
+            dataset = dataset,
+            model = ddp_model if using_ddp else model,
+            opt = opt,
+            device = device,
+            cfg = cfg,
+            sam = sam,
+            using_ddp = using_ddp
         )
         results = trainer.train(
             start_epoch, end_epoch, cfg,
@@ -159,7 +168,7 @@ def ddp_setup() :
     torch.cuda.set_device(rank)
 
 # Load pretraind ResNet50 model
-def load_model(cfg) -> nn.Module :
+def load_model(cfg: dict) -> nn.Module :
     model = ModifiedResNet(
         in_channels     = cfg["MODEL"]["INCHANNELS"],
         out_channels    = 64,
@@ -196,11 +205,29 @@ def load_model(cfg) -> nn.Module :
 
     return model
 
+# Load SAM model
+def load_sam_model(cfg: dict) -> nn.Module :
+    from segment_anything import sam_model_registry
+    sam_path = os.path.join(cfg["ROOT"], cfg["SAM_DIR"]) \
+        if cfg["ROOT"] is not None else cfg["SAM_DIR"]
+        
+    sam_name = None
+    model_names = ["vit_h", "vit_l", "vit_b"]
+    for name in model_names :
+        if name in cfg["SAM_DIR"].lower():
+            sam_name = name
+            break
+    
+    if sam_name is None :
+        raise ValueError(f"SAM model name should be one of {model_names}")
+    
+    return sam_model_registry[sam_name](checkpoint=sam_path)
+
 # Load class frequency and entropy for focal loss
 # Class frequency is loaded from "Database/class_freq.txt"
 # Class entropy is loaded from "Database/class_entropy.txt"
 # Execute "utility/calc_class_freq_entropy.py" to generate the data
-def load_class_frequency(cfg) -> torch.Tensor :
+def load_class_frequency(cfg: dict) -> torch.Tensor :
         cls_freq = torch.zeros(cfg["MODEL"]["CATEGORY_NUM"])
         
         with open(os.path.join(cfg["DATA_BASE_DIR"], "..", "class_freq.txt"), "r") as file :
@@ -208,7 +235,7 @@ def load_class_frequency(cfg) -> torch.Tensor :
                 cls_freq[i] = float(line)
         
         return cls_freq
-def load_class_entropy(cfg) -> torch.Tensor :
+def load_class_entropy(cfg: dict) -> torch.Tensor :
     cls_entropy = torch.zeros(cfg["MODEL"]["CATEGORY_NUM"])
     
     with open(os.path.join(cfg["DATA_BASE_DIR"], "..", "class_entropy.txt"), "r") as file :
@@ -220,7 +247,6 @@ def load_class_entropy(cfg) -> torch.Tensor :
 # Load datasets from csv file and apply preprocessing
 def load_dataset(cfg: dict, using_ddp: bool = False, rank: int = 0) -> "dict[str, DataLoader]":
     # Transforms
-    # TODO: Calculate mean and std of dataset
     train_trfs = transforms.Compose([
         transforms.ToTensor(),
         transforms.Resize((256, 256)),
@@ -252,8 +278,12 @@ def load_dataset(cfg: dict, using_ddp: bool = False, rank: int = 0) -> "dict[str
     train_ba_size = cfg["BATCH_SIZE"]       // dist.get_world_size() if using_ddp else cfg["BATCH_SIZE"]
     valid_ba_size = cfg["EVAL_BATCH_SIZE"]  // dist.get_world_size() if using_ddp else cfg["EVAL_BATCH_SIZE"]
 
-    train_dataset = FoodDataset(cfg["TRAIN_CSV_DIR"], transform=train_trfs, hsv=False, root=cfg["ROOT"])
-    valid_dataset = FoodDataset(cfg["VALID_CSV_DIR"], transform=valid_trfs, hsv=False, root=cfg["ROOT"])
+    if cfg["USE_SSC"] :
+        train_dataset = FoodDatasetWithMasks(cfg["TRAIN_CSV_DIR"], transform=train_trfs, hsv=False, root=cfg["ROOT"], sam_dir=cfg["SAM_MASK_DIR"])
+        valid_dataset = FoodDatasetWithMasks(cfg["VALID_CSV_DIR"], transform=valid_trfs, hsv=False, root=cfg["ROOT"], sam_dir=cfg["SAM_MASK_DIR"])
+    else :
+        train_dataset = FoodDataset(cfg["TRAIN_CSV_DIR"], transform=train_trfs, hsv=False, root=cfg["ROOT"])
+        valid_dataset = FoodDataset(cfg["VALID_CSV_DIR"], transform=valid_trfs, hsv=False, root=cfg["ROOT"])
 
     #? Use `DistributedSampler` for DDP 
     train_sampler = DistributedSampler(train_dataset, rank=rank, shuffle=True)  if using_ddp else None
@@ -299,8 +329,12 @@ if __name__ == "__main__":
         input("Press ENTER to continue > ")
         main(cfg)
     except Exception :
-        console.print_exception(show_locals=False)
+        console.print_exception(show_locals=True)
     finally :
+        import gc
+        torch.cuda.empty_cache()
+        gc.collect()
+        
         end = time.time()
         dt = end - start
         console.print(f"Time used = {dt}")

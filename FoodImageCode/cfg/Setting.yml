@@ -4,16 +4,19 @@ PARSER_SETTING:
     WORKERS: 4
     EPOCHS: 30
     # EPOCHS: 1
-    BATCH_SIZE: 10
-    EVAL_BATCH_SIZE: 10
+    BATCH_SIZE: 1
+    EVAL_BATCH_SIZE: 1
 
 TRAIN_SETTING:
+    ### Basic settings ###
     # ROOT: "D:/MSoCLab/ai/code"
     ROOT: "/home/msoc/ben_aifood"
     RESUME: False
     CHECKPOINT_PATH: "FoodImageCode/Results/checkpoints/5_14/5_14_ModifiedResNet50_93_epoch_4.pth.tar"
     TEST_METRICS: True
-    # data
+
+    ### Data Settings ###
+
     # DATA_BASE_DIR: "Database/only_ai_food"
     DATA_BASE_DIR: "Database/single_food_with_preprocess_0503"
     # DATA_BASE_DIR  : 'Database/aisingle_food_preprocess_0503'
@@ -24,8 +27,17 @@ TRAIN_SETTING:
     TEST_CSV_DIR: "FoodImageCode/csv/single_food/AllFoodImage_test_ratio811.csv"
     FOODSEG_CSV_DIR: "FoodImageCode/csv/FoodSeg103.csv"
     SAVE_DIR: "FoodImageCode/Results"
-    SAVE_SUB_NAME: "6_19_aifood_nonorm"
-    # Model
+    SAVE_SUB_NAME: "7_24_aifood_test"
+
+    ### S2C ###
+
+    SAM_DIR: "pretrained/sam_vit_b.pth"
+    SAM_MASK_DIR: "sam_map/"
+    USE_SSC: True
+    USE_CPM: True
+
+    ### Model ###
+
     MODEL:
         NAME: "ModifiedResNet50_93"
         INCHANNELS: 3
@@ -37,7 +49,6 @@ TRAIN_SETTING:
         LR: .0001
         MOMENTUM: 0.9
         WEIGHT_DECAY: .0005
-    # Loss
     LOSS:
         ALPHA: 0.25
         GAMMA: 2.0

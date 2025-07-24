@@ -214,9 +214,13 @@ class ModifiedResNet(nn.Module):
         return nn.Sequential(*layers)
 
     def forward(self, x: torch.Tensor) -> torch.Tensor :
+
+        # Conv 1
         out = self.conv1(x)
         out = self.bn1(out)
         out = self.relu(out)
+        
+        # Conv 2~5
         # bs, 64, 112, 112
         out1 = self.layer1(out)
         # print("layer1 output:", out1.shape)
@@ -226,26 +230,67 @@ class ModifiedResNet(nn.Module):
         # print("layer3 output:", out3.shape)
         out4 = self.layer4(out3)
         # print("layer4 output:", out4.shape)
+        
+        # CAM
+        with torch.no_grad() :
+            cam = self.generate_cam(out4)
+        
+        # Global average pooling
         out = self.avgpool(out4)
         # print("avg output:", out.shape)
+        
+        # Fully connected layer
         out = out.view(out.size(0), -1)
         out = self.fc(out)
         # print("final output:", out.shape)
-        return out 
+        
+        return {
+            "feat": out4,
+            "pred": out,
+            "cam" : cam
+        }
 
-    def convol_last_layer(self, x: torch.Tensor) -> torch.Tensor :
-        out = self.conv1(x)
-        out = self.bn1(out)
-        out = self.relu(out)
-        # bs, 64, 112, 112
-        out1 = self.layer1(out)
-        #print("layer1 output:", out1.shape)
-        out2 = self.layer2(out1)
-        #print("layer2 output:", out2.shape)
-        out3 = self.layer3(out2)
-        #print("layer3 output:", out3.shape)
-        out4 = self.layer4(out3)
-        return out4
+    def generate_cam(self, feature_vec: torch.Tensor, normalize: bool = False) -> torch.Tensor :
+        '''
+        Generate CAM by inputting the feature map from the last convolutioon layer into the fully connected layer
+        
+        Arguments :
+            feature_vec `Tensor` "[B, 2048, 14, 14]": Feature map from the last convolution layer
+            normalize `bool`: Whether to normalize the CAM. Default is False
+        '''
+        
+        # feature_vec: [B, 2048, 14, 14]
+        B = feature_vec.size(0)
+        fc_weights = self.fc.weight.data  # [num_classes, 2048]
+    
+        # Compute CAMs: [B, num_classes, 14, 14]
+        cams = torch.einsum('oc,bcxy->boxy', fc_weights, feature_vec)
+    
+        # Normalize CAMs per sample and per class
+        if normalize :
+            cams = F.relu(cams)
+            cams_reshaped = cams.view(B, cams.size(1), -1)
+            min_vals = cams_reshaped.min(dim=2, keepdim=True)[0]
+            max_vals = cams_reshaped.max(dim=2, keepdim=True)[0]
+            norm_cams = (cams_reshaped - min_vals) / (max_vals - min_vals + 1e-5)
+            norm_cams = norm_cams.view_as(cams)
+            return norm_cams  # [B, num_classes, 14, 14]
+            
+        return cams
+
+    # def convol_last_layer(self, x: torch.Tensor) -> torch.Tensor :
+    #     out = self.conv1(x)
+    #     out = self.bn1(out)
+    #     out = self.relu(out)
+    #     # bs, 64, 112, 112
+    #     out1 = self.layer1(out)
+    #     #print("layer1 output:", out1.shape)
+    #     out2 = self.layer2(out1)
+    #     #print("layer2 output:", out2.shape)
+    #     out3 = self.layer3(out2)
+    #     #print("layer3 output:", out3.shape)
+    #     out4 = self.layer4(out3)
+    #     return out4
 
 
 if __name__ == '__main__':

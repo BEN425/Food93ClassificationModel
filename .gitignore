@@ -9,8 +9,11 @@
 *.webp
 *.tar
 *.pth
+*.npz
 Pipfile*
+compress.py
 
+s2c/
 Results/
 inference_results/
 origin_image/
@@ -23,7 +26,8 @@ image/
 test/
 test results/
 cam results/
-compress.py
+pretrained
+sam*
 
 Database/*
 !Database/class.txt
