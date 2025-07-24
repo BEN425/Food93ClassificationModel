@@ -480,7 +480,7 @@ class Trainer():
                 # SAM decoder, predict 3 masks and their confidence scores
                 # masks: [1, 3, H, W]
                 # confs: [1, 1, 3]
-                masks, confs, _ = self.sam(
+                masks, _, confs = self.sam(
                     run_decoder_only = True,
                     features_sam = features_sam[b].unsqueeze(0),
                     original_image_size = (H, W),
@@ -509,7 +509,9 @@ class Trainer():
                     # print(f"[Warning] Invalid best_idx={target_idx}, confs.shape={confs.shape}")
                     # continue  # skip invalid
                 
-                target_score = confs[0, target_idx].item()
+                target_conf = confs[0, target_idx].unsqueeze(0).unsqueeze(0)
+                target_conf = F.interpolate(target_conf, (H,W), mode='bilinear', align_corners=False)[0,0]
+                target_score = target_conf[target_mask]
                 # CAM score: Region-wise average with SAM mask region
                 cam_mean = cam_ms[b, cls][target_mask].mean() if target_mask.any() else 0.0
                 # Confidence score: Multiplfy CAM score and SAM score

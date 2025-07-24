@@ -32,6 +32,7 @@
     - `pip install torch-scatter -f https://data.pyg.org/whl/torch-1.21.1+cu113.html --no-index`
     - `pip list`
     - `pip check`
+    - 若出現 `ERROR: Can not perform a '--user' install. User site-packages are not visible in this virtualenv.` 錯誤，將虛擬環境資料夾 `./s2c/pyenv.cfg` 中的 `include-system-site-packages` 設為 true
 6. 修改 SAM 檔案，將 `mask_decoder.py`, `sam.py` 複製到 SAM Module 中：
     - `cp ./modeling/mask_decoder.py ./s2c/lib/python3.8/site-packages/segment_anything/modeling/`
     - `cp ./modeling/sam.py ./s2c/lib/python3.8/site-packages/segment_anything/modeling/`
