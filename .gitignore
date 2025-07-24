@@ -35,3 +35,5 @@ Database/*
 !Database/FoodSeg_cate_mapping.csv
 !Database/class chinese.txt
 !FoodImageCode/test.ipynb
+
+!requirements.txt
