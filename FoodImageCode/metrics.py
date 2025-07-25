@@ -5,6 +5,7 @@ Defines matrics to evaluate the model
 Defines a function to evaluate the model on dataset
 '''
 
+# TODO: Add mIoU metrics to S2C
 
 import torch
 import torch.nn as nn
@@ -224,11 +225,11 @@ def evaluate_dataset(
     data_count = 0
 
     model.eval() # Evaluation mode
-    for idx, (img, label) in enumerate(dataloader):
+    for idx, (img, label, _) in enumerate(dataloader):
         img = img.to(device)
         label = label.to(device, dtype=torch.float32)
         
-        out = model(img)
+        out = model(img)["pred"]
         logits = torch.sigmoid(out)
         pred = torch.round(logits) # Threshold = 0.5
         
@@ -317,12 +318,12 @@ def evaluate_dataset_class_acc(
     data_count = 0
 
     model.eval() # Evaluation mode
-    for idx, (img, label) in enumerate(dataloader):
+    for idx, (img, label, _) in enumerate(dataloader):
         img: torch.Tensor = img.to(device)
         label: torch.Tensor = label.to(device, dtype=torch.float32)
         
         out = model(img)
-        logits = torch.sigmoid(out)
+        logits = torch.sigmoid(out)["pred"]
         pred = torch.round(logits) # Threshold = 0.5
         
         # Loss

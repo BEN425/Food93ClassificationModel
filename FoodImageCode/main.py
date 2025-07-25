@@ -329,7 +329,7 @@ if __name__ == "__main__":
         input("Press ENTER to continue > ")
         main(cfg)
     except Exception :
-        console.print_exception(show_locals=True)
+        console.print_exception(show_locals=False)
     finally :
         import gc
         torch.cuda.empty_cache()

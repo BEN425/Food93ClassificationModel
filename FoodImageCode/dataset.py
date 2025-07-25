@@ -118,7 +118,6 @@ class FoodDatasetWithMasks(data.Dataset):
             csv_path: str,
             root: str = None,
             sam_dir: str = None,
-            is_sam_dir_root = False,
             transform = None,
             hsv = False,
         ):
@@ -143,12 +142,7 @@ class FoodDatasetWithMasks(data.Dataset):
                 ))
         
         self.root = root
-        
-        if not is_sam_dir_root :
-            self.sam_dir = os.path.join(root, sam_dir) \
-                if sam_dir is not None and root is not None else None
-        else :
-            self.sam_dir = sam_dir
+        self.sam_dir = sam_dir
         self.add_hsv = hsv
         
         #print(self.datalist)

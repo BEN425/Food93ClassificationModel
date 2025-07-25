@@ -4,8 +4,8 @@ PARSER_SETTING:
     WORKERS: 4
     EPOCHS: 30
     # EPOCHS: 1
-    BATCH_SIZE: 1
-    EVAL_BATCH_SIZE: 1
+    BATCH_SIZE: 12
+    EVAL_BATCH_SIZE: 12
 
 TRAIN_SETTING:
     ### Basic settings ###
@@ -18,32 +18,32 @@ TRAIN_SETTING:
     ### Data Settings ###
 
     # DATA_BASE_DIR: "Database/only_ai_food"
-    DATA_BASE_DIR: "Database/single_food_with_preprocess_0503"
-    # DATA_BASE_DIR  : 'Database/aisingle_food_preprocess_0503'
-    FOODSEG_DIR: "Database/FoodSeg103"
-    ALL_CSV_DIR: "FoodImageCode/csv/single_food/AllFoodImage.csv"
-    TRAIN_CSV_DIR: "FoodImageCode/csv/single_food/AllFoodImage_train_ratio811.csv"
-    VALID_CSV_DIR: "FoodImageCode/csv/single_food/AllFoodImage_valid_ratio811.csv"
-    TEST_CSV_DIR: "FoodImageCode/csv/single_food/AllFoodImage_test_ratio811.csv"
+    # DATA_BASE_DIR: "Database/single_food_with_preprocess_0503"
+    DATA_BASE_DIR: 'Database/aisingle_food_preprocess_0503'
+    ALL_CSV_DIR:   "FoodImageCode/csv/ai_single_food/AllFoodImage.csv"
+    TRAIN_CSV_DIR: "FoodImageCode/csv/ai_single_food/AllFoodImage_train_ratio811.csv"
+    VALID_CSV_DIR: "FoodImageCode/csv/ai_single_food/AllFoodImage_valid_ratio811.csv"
+    TEST_CSV_DIR:  "FoodImageCode/csv/ai_single_food/AllFoodImage_test_ratio811.csv"
+    FOODSEG_DIR:     "Database/FoodSeg103"
     FOODSEG_CSV_DIR: "FoodImageCode/csv/FoodSeg103.csv"
-    SAVE_DIR: "FoodImageCode/Results"
-    SAVE_SUB_NAME: "7_24_aifood_test"
+    SAVE_DIR:      "FoodImageCode/Results"
+    SAVE_SUB_NAME: "7_24_aisingle"
 
     ### S2C ###
 
     SAM_DIR: "pretrained/sam_vit_b.pth"
     SAM_MASK_DIR: "sam_map/"
-    USE_SSC: True
-    USE_CPM: True
+    USE_SSC: False
+    USE_CPM: False
 
     ### Model ###
 
     MODEL:
         NAME: "ModifiedResNet50_93"
-        INCHANNELS: 3
-        OUTCHANNELS: 64
+        INCHANNELS:   3
+        OUTCHANNELS:  64
         CATEGORY_NUM: 93
-        CBAM: [False, False, False, False]
+        CBAM:  [False, False, False, False]
         SENET: [False, False, False, False]
         # LR: .00001
         LR: .0001

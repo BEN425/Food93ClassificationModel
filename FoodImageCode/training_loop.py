@@ -172,9 +172,11 @@ class Trainer():
             ):
                 
                 self.model.train()
+                self.opt.zero_grad()
+                
                 img, label = img.to(self.device), label.to(self.device).to(torch.float32)
                 
-                result = self.model(img)       # Model output
+                result = self.model(img)    # Model output
                 out = result["pred"]
                 logits = torch.sigmoid(out) # Probablility of each class
                 pred = torch.round(logits)  # Prediction result, threshold = 0.5
@@ -183,7 +185,7 @@ class Trainer():
                 #? focal loss implicitly applies sigmoid
                 loss_cls = cal_class_focal_loss(out, label, class_alpha, gamma)
                 
-                # SSC loss
+                # Process SSC
                 if self.cfg["USE_SSC"] :
                     feature_vec = result["feat"]
                     se = sam_img.to(self.device)
@@ -192,10 +194,11 @@ class Trainer():
                 else :
                     loss_ssc = torch.Tensor([0]).to(self.device)
                 
-                # CPM loss
+                # Process CPM
                 if self.cfg["USE_CPM"] :
                     self.model.eval()
-                    cam_main, cam_ms = self._multi_scale_cam(img, label)
+                    
+                    cam_ms = self._multi_scale_cam(img, label) # [B, CLS, H, W]
                     max_points = self._sample_local_max(
                         img.shape,
                         label,
@@ -203,8 +206,21 @@ class Trainer():
                         size_sam = 512,
                         threshold = 0.2,
                     )
-                    pgt_sam = self._aggregate_sam_cam(img, cam_ms, max_points, size_sam=512, mask_select=2)
+                    pgt_sam = self._aggregate_sam_cam(img, cam_ms, max_points, size_sam=512, mask_select=2) # [B, H, W]
+                    
                     self.model.train()
+                    
+                    cam_main = F.relu(result["cam"]) # [B, CLS, H, W]
+                    # Normalize each class
+                    cam_max = F.adaptive_max_pool2d(cam_main, (1, 1))
+                    cam_main = cam_main / (cam_max + 1e-5)
+                    # Resize CAM to image size
+                    cam_main = F.interpolate(cam_main, size=img.shape[2:], mode="bilinear", align_corners=False) \
+                        * label.view(label.shape[0], self.class_num, 1, 1)
+                    # Append background channel to CAM
+                    cam_bg = 1 - cam_main.max(dim=1, keepdims=True)[0]
+                    cam_main = torch.cat((cam_main, cam_bg), dim=1)
+                    # Loss
                     loss_cpm = calc_cpm_loss(cam_main, pgt_sam)
                 else :
                     loss_cpm = torch.Tensor([0]).to(self.device)
@@ -213,18 +229,17 @@ class Trainer():
                 
                 # Total loss
                 loss = loss_cls + loss_ssc + loss_cpm
+
+                # Back propagation
+                loss.backward(retain_graph=True)
+                self.opt.step()
+                self.ema.update()
                 
                 # Metrics
                 tp_fp_fn_tn = cal_tp_fp_fn_tn(pred, label)
                 train_err_cor = cal_error_nums(pred, label)
                 label_count += label.numel()
                 data_count += len(label)
-
-                # Back propagation
-                self.opt.zero_grad()
-                loss.backward(retain_graph=True)
-                self.opt.step()
-                self.ema.update()
 
                 # Record each iter loss
                 record_dict["train_cls_loss"]   += loss_cls.item()
@@ -281,7 +296,7 @@ class Trainer():
     ### CPM ###
 
     @torch.no_grad()
-    def _multi_scale_cam(self, image_tensor: torch.Tensor, label_tensor: torch.Tensor) -> "tuple[torch.Tensor]" :
+    def _multi_scale_cam(self, image_tensor: torch.Tensor, label_tensor: torch.Tensor) -> torch.Tensor :
         '''
         Generate CAM with image scaled by 0.5, 1, 1.5 and 2
         
@@ -290,7 +305,6 @@ class Trainer():
             label_tensor `Tensor` "[B, CLS]": Ground-truth label
         
         Return :
-            cam_main `Tensor` "[B, CLS+1, H, W]": CAM of original scale image with additional background channel
             cam_ms `Tensor` "[B, CLS, H, W]": Result CAM
         '''
         
@@ -320,16 +334,6 @@ class Trainer():
             # Only keep channels of ground-truth labels
             cam *= label_tensor.view(B, self.class_num, 1, 1)
             
-            # Save CAM of original scale for later use
-            if scale == 1 :
-                cam_main = cam
-                # Normalization
-                cam_max = F.adaptive_max_pool2d(cam_main, (1, 1))
-                cam_main = cam_main / (cam_max + 1e-5)
-                # Append background channel
-                cam_bg = 1 - cam_main.max(dim=1, keepdims=True)[0]
-                cam_main = torch.cat((cam_main, cam_bg), dim=1)
-            
             # print(f"\t{scale}: {cam.shape}") 
             
             cam_ms += cam
@@ -338,7 +342,7 @@ class Trainer():
         cam_max = F.adaptive_max_pool2d(cam_ms, (1, 1))
         cam_ms = cam_ms / (cam_max + 1e-5)
         
-        return cam_main, cam_ms
+        return cam_ms
 
     @torch.no_grad()
     def _sample_local_max(
@@ -508,7 +512,7 @@ class Trainer():
                     target_mask = masks[0, 2]
                     # print(f"[Warning] Invalid best_idx={target_idx}, confs.shape={confs.shape}")
                     # continue  # skip invalid
-                
+
                 target_conf = confs[0, target_idx].unsqueeze(0).unsqueeze(0)
                 target_conf = F.interpolate(target_conf, (H,W), mode='bilinear', align_corners=False)[0,0]
                 target_score = target_conf[target_mask]
