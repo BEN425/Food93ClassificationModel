@@ -8,6 +8,13 @@
 
 #### 前置作業
 
+1. 安裝 bzip2：`sudo apt-get install build-essential zlib1g-dev libffi-dev libssl-dev libbz2-dev libreadline-dev libsqlite3-dev liblzma-dev libncurses-dev tk-dev`
+2. 安裝 sqlite3：`sudo apt-get install libsqlite3-dev`
+
+#### 架設環境
+
+Docker 環境中 pyenv 可能無法正常運作
+
 1. 安裝 pyenv：
     1. `curl -fsSL https://pyenv.run | bash`
     2. 將以下程式碼
@@ -18,37 +25,33 @@
         eval "$(pyenv virtualenv-init -)"
         ```
         複製到 `$HOME/.bashrc` 最後面，並重新啟動終端使其生效
-2. 安裝 bzip2：`sudo apt-get install build-essential zlib1g-dev libffi-dev libssl-dev libbz2-dev libreadline-dev libsqlite3-dev liblzma-dev libncurses-dev tk-dev`
-3. 安裝 sqlite3：`sudo apt-get install libsqlite3-dev`
-
-#### 架設環境
-
-1. 安裝 Python 版本：`pyenv install 3.8.13`
-2. 設定專案 Python 版本：`pyenv local 3.8.13`
-3. 建立虛擬環境：`python -m venv s2c `
-4. 進入環境：`source ./s2c/bin/activate`
-5. 安裝 Python 套件
+2. 安裝 Python 版本：`pyenv install 3.8.13`
+3. 設定專案 Python 版本：`pyenv local 3.8.13`
+4. 建立虛擬環境：`python -m venv s2c `
+5. 進入環境：`source ./s2c/bin/activate`
+6. 安裝 Python 套件
     - `pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu113`
     - `pip install torch-scatter -f https://data.pyg.org/whl/torch-1.21.1+cu113.html --no-index`
     - `pip list`
     - `pip check`
     - 若出現 `ERROR: Can not perform a '--user' install. User site-packages are not visible in this virtualenv.` 錯誤，將虛擬環境資料夾 `./s2c/pyenv.cfg` 中的 `include-system-site-packages` 設為 true
-6. 修改 SAM 檔案，將 `mask_decoder.py`, `sam.py` 複製到 SAM Module 中：
+7. 修改 SAM 檔案，將 `mask_decoder.py`, `sam.py` 複製到 SAM Module 中：
     - `cp ./modeling/mask_decoder.py ./s2c/lib/python3.8/site-packages/segment_anything/modeling/`
     - `cp ./modeling/sam.py ./s2c/lib/python3.8/site-packages/segment_anything/modeling/`
-7. 下載 SAM model weights 放到 `./pretrained`：https://github.com/facebookresearch/segment-anything
-
-8. 將資料集放到 `Database` 資料夾, 詳細訊息可以查看章節 **Database**
 
 #### 訓練前準備
 
-1. 啟動環境：`pyenv local 3.8.13`, `source ./s2c/bin/activate`
-2. 檢查資料集中是否有問題：`cd utility`, `python check_labels.py`, `python ckech_image.py`
-3. 調整 `FoodImageCode/cfg/Setting.yml` 的設定，包含路徑、訓練參數等
-4. `cd ../FoodImageCode`
+1. 下載 SAM model weights 放到 `./pretrained`：https://github.com/
+facebookresearch/segment-anything
+2. 將資料集放到 `Database` 資料夾, 詳細訊息可以查看章節 **Database**
+
+3. 啟動環境：`pyenv local 3.8.13`, `source ./s2c/bin/activate`
+4. 檢查資料集中是否有問題：`cd utility`, `python check_labels.py`, `python ckech_image.py`
+5. 調整 `FoodImageCode/cfg/Setting.yml` 的設定，包含路徑、訓練參數等
+6. `cd ../FoodImageCode`
 5. 清除 CUDA 記憶體：`nvidia-smi | grep 'python' | awk '{ print $5 }' | xargs -n1 kill -9`, `nvidia-smi`
-6. 開始訓練：`python main.py`
-7. 訓練結果會存放在 `FoodImageCode/Results` 中，包含 checkpoints 與 tensorboard logs
+7. 開始訓練：`python main.py`
+8. 訓練結果會存放在 `FoodImageCode/Results` 中，包含 checkpoints 與 tensorboard logs
 
 # Database
 

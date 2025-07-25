@@ -263,13 +263,13 @@ def load_dataset(cfg: dict, using_ddp: bool = False, rank: int = 0) -> "dict[str
         #     shear=2
         # ),
         # transforms.RandomErasing(p=0.2, scale=(0.02, 0.15), ratio=(0.3, 3.3)),
-        # transforms.Normalize(mean=[0.522, 0.475, 0.408], std=[0.118, 0.115, 0.117])
+        transforms.Normalize(mean=[0.522, 0.475, 0.408], std=[0.118, 0.115, 0.117])
     ])
     valid_trfs = transforms.Compose([
         transforms.ToTensor(),
         transforms.Resize((256, 256)),
         transforms.CenterCrop(224),
-        # transforms.Normalize(mean=[0.522, 0.475, 0.408], std=[0.118, 0.115, 0.117])
+        transforms.Normalize(mean=[0.522, 0.475, 0.408], std=[0.118, 0.115, 0.117])
     ])
 
     # Load dataset and dataloader
