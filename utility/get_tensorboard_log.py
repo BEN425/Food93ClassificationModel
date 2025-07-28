@@ -13,7 +13,7 @@ import openpyxl.chart as xlchart
 import openpyxl.utils as xlutil
 
 
-LOG_PATH = "../FoodImageCode/Results/logs/5_17_single_alpha_25"
+LOG_PATH = "../FoodImageCode/Results/logs/7_24_aisingle"
 
 def get_log_data(dpath: str) -> "dict[str, list[tuple[int, float]]]" :
     # Get summmaries

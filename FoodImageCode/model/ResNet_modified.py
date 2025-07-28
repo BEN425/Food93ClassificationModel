@@ -7,8 +7,11 @@ import torchvision.models as models
 
 import math
 
-# CBAM Module 
-#---------------------------------------------------------------#
+
+##### Misc #####
+
+# CBAM: https://arxiv.org/abs/1807.06521
+
 class ChannelAttention(nn.Module):
     def __init__(self, in_planes: int, ratio=16):
         super().__init__()
@@ -49,10 +52,9 @@ class CBAM(nn.Module):
         x = x * self.ca(x)
         x = x * self.sa(x)        
         return x 
-#---------------------------------------------------------------#
 
-# SE Block
-#---------------------------------------------------------------#
+# SENet: https://arxiv.org/abs/1709.01507
+
 class SEBlock(nn.Module):
     def __init__(self, channels: int, reduction=16):
         super().__init__()
@@ -69,8 +71,11 @@ class SEBlock(nn.Module):
         y = self.avg_pool(x).view(b, c)
         y = self.fc(y).view(b, c, 1, 1)
         return x * y
-#---------------------------------------------------------------#
 
+##### #####
+
+
+##### ResNet 50 ##### https://arxiv.org/abs/1512.03385
 
 # fix the 'same' padding option in the Conv2d layer when stride is above 1
 class Conv2dSame(nn.Conv2d):
@@ -232,8 +237,7 @@ class ModifiedResNet(nn.Module):
         # print("layer4 output:", out4.shape)
         
         # CAM
-        with torch.no_grad() :
-            cam = self.generate_cam(out4)
+        cam = self.generate_cam(out4)
         
         # Global average pooling
         out = self.avgpool(out4)
@@ -292,43 +296,55 @@ class ModifiedResNet(nn.Module):
     #     out4 = self.layer4(out3)
     #     return out4
 
+##### #####
+
 
 if __name__ == '__main__':
-    model = ModifiedResNet(3, 64)
-    pretrained_resnet = models.resnet50(pretrained=True)
+    
+    from rich import print
+    
+    def load_resnet50() :
+        model = ModifiedResNet(3, 64)
+        pretrained_resnet = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
 
-    # Load the pretrained weights into ModifiedResNet
-    pretrained_dict = pretrained_resnet.state_dict()
-    model_dict = model.state_dict()
-    #print(model_dict.keys())
+        # Load the pretrained weights into ModifiedResNet
+        pretrained_dict = pretrained_resnet.state_dict()
+        model_dict = model.state_dict()
+        # print(list(model_dict.keys()))
 
-    # Filter out unnecessary keys and find out which layers match
-    loaded_layers = []
-    pretrained_dict_filtered = {
-        k: v for k, v in pretrained_dict.items() if k in model_dict and k not in 
-        ['fc.weight', 
-         'fc.bias', 
-         'layer3.0.conv1.weight', 
-         'layer3.0.conv2.weight', 
-         'layer3.0.conv3.weight', 
-         'layer4.0.conv1.weight', 
-         'layer4.0.conv2.weight', 
-         'layer4.0.conv3.weight']}
-    loaded_layers = list(pretrained_dict_filtered.keys())
+        # Filter out unnecessary keys and find out which layers match
+        loaded_layers = []
+        pretrained_dict_filtered = {
+            k: v for k, v in pretrained_dict.items() if k in model_dict and k not in 
+            ['fc.weight', 
+            'fc.bias', 
+            'layer3.0.conv1.weight', 
+            'layer3.0.conv2.weight', 
+            'layer3.0.conv3.weight', 
+            'layer4.0.conv1.weight', 
+            'layer4.0.conv2.weight', 
+            'layer4.0.conv3.weight']}
+        loaded_layers = list(pretrained_dict_filtered.keys())
 
-    # Update the model dictionary with the pretrained weights
-    model_dict.update(pretrained_dict_filtered)
+        # Update the model dictionary with the pretrained weights
+        model_dict.update(pretrained_dict_filtered)
 
-    # Load the state_dict into the model
-    model.load_state_dict(model_dict)
+        # Load the state_dict into the model
+        incomp = model.load_state_dict(model_dict)
+        print(incomp)
 
-    # Print the layers that were loaded with pretrained weights
-    # print("The following layers were loaded with pretrained weights:")
-    # for layer in loaded_layers:
-    #     print(layer)
+        # Print the layers that were loaded with pretrained weights
+        # print("The following layers were loaded with pretrained weights:")
+        # for layer in loaded_layers:
+        #     print(layer)
 
-    #Test the model with dummy input
-    x = torch.randn(2, 3, 224, 224)
-    out = torch.sigmoid(model(x))
-    print(out)
+        #Test the model with dummy input
+        # x = torch.randn(2, 3, 224, 224)
+        # out = torch.sigmoid(model(x))
+        # print(out)
 
+    def load_resnet38() :
+        model = Net_CAM()
+        model.load_state_dict(models.resnet38d.convert_mxnet_to_torch('./pretrained/resnet_38d.params'), strict=False)
+
+    load_resnet50()

@@ -19,15 +19,15 @@ TRAIN_SETTING:
 
     # DATA_BASE_DIR: "Database/only_ai_food"
     # DATA_BASE_DIR: "Database/single_food_with_preprocess_0503"
-    DATA_BASE_DIR: 'Database/aisingle_food_preprocess_0503'
-    ALL_CSV_DIR:   "FoodImageCode/csv/ai_single_food/AllFoodImage.csv"
-    TRAIN_CSV_DIR: "FoodImageCode/csv/ai_single_food/AllFoodImage_train_ratio811.csv"
-    VALID_CSV_DIR: "FoodImageCode/csv/ai_single_food/AllFoodImage_valid_ratio811.csv"
-    TEST_CSV_DIR:  "FoodImageCode/csv/ai_single_food/AllFoodImage_test_ratio811.csv"
+    DATA_BASE_DIR:   'Database/aisingle_food_preprocess_0503'
+    ALL_CSV_DIR:     "FoodImageCode/csv/ai_single_food/AllFoodImage.csv"
+    TRAIN_CSV_DIR:   "FoodImageCode/csv/ai_single_food/AllFoodImage_train_ratio811.csv"
+    VALID_CSV_DIR:   "FoodImageCode/csv/ai_single_food/AllFoodImage_valid_ratio811.csv"
+    TEST_CSV_DIR:    "FoodImageCode/csv/ai_single_food/AllFoodImage_test_ratio811.csv"
     FOODSEG_DIR:     "Database/FoodSeg103"
     FOODSEG_CSV_DIR: "FoodImageCode/csv/FoodSeg103.csv"
-    SAVE_DIR:      "FoodImageCode/Results"
-    SAVE_SUB_NAME: "7_24_aisingle"
+    SAVE_DIR:        "FoodImageCode/Results"
+    SAVE_SUB_NAME:   "7_24_aisingle"
 
     ### S2C ###
 
@@ -39,6 +39,7 @@ TRAIN_SETTING:
     ### Model ###
 
     MODEL:
+        TYPE: "ResNet50"
         NAME: "ModifiedResNet50_93"
         INCHANNELS:   3
         OUTCHANNELS:  64
@@ -49,6 +50,7 @@ TRAIN_SETTING:
         LR: .0001
         MOMENTUM: 0.9
         WEIGHT_DECAY: .0005
+        OPTIMIZER: "Adam"
     LOSS:
         ALPHA: 0.25
         GAMMA: 2.0

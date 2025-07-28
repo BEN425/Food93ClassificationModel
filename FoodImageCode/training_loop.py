@@ -555,6 +555,7 @@ class Trainer():
         )
         console.print(f"Saved checkpoint: \"{checkpoint_name}\"")
 
+
 if __name__ == "__main__" :
     import time
     

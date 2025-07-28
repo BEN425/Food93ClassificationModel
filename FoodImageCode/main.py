@@ -30,10 +30,12 @@ console = get_console()
 def main(cfg: dict) :
     try :
 
-        # Initialization
+        ##### Initialization #####
+        
         console.print("Initializing...")
-
         results = None
+
+        # Setup DDP
         world_size = int(os.environ.get("WORLD_SIZE", 1)) 
         using_ddp = world_size > 1
         if using_ddp :
@@ -47,11 +49,14 @@ def main(cfg: dict) :
         
         init_seed(cfg["SEED"])
         
-        # Load dataloader
+        ##### Load dataset #####
+        
         console.print("Loading dataset...")
         dataset = load_dataset(cfg, using_ddp, rank)
         
-        # Load model
+        ##### Load model #####
+        
+        # Load classification model
         console.print("Loading model...")
         model = load_model(cfg)
         model = model.to(device)
@@ -66,21 +71,32 @@ def main(cfg: dict) :
         else :
             sam = None
         
+        ###### Load optimizer #####
 
-        # Optimizer, change to AdamW
-        # opt = torch.optim.SGD(
-        #     model.parameters(),
-        #     lr=cfg["MODEL"]["LR"],
-        #     momentum=cfg["MODEL"]["MOMENTUM"],
-        #     weight_decay=cfg["MODEL"]["WEIGHT_DECAY"]
-        # )
-        opt = torch.optim.AdamW(
-            model.parameters(),
-            lr=cfg["MODEL"]["LR"],
-            weight_decay=cfg["MODEL"]["WEIGHT_DECAY"]
-        )
+        opt_name = cfg["OPTIMIZER"].strip().lower()
+        # Poly Optimizer
+        # TODO: Add poly optimizer
+        if "poly" in opt_name :
+            pass
+        else :
+            # SGD
+            if "sgd" in opt_name :
+                opt = torch.optim.SGD(
+                    model.parameters(),
+                    lr=cfg["MODEL"]["LR"],
+                    momentum=cfg["MODEL"]["MOMENTUM"],
+                    weight_decay=cfg["MODEL"]["WEIGHT_DECAY"]
+                )
+            # Default: AdamW
+            else :
+                opt = torch.optim.AdamW(
+                    model.parameters(),
+                    lr=cfg["MODEL"]["LR"],
+                    weight_decay=cfg["MODEL"]["WEIGHT_DECAY"]
+                )
 
-        # Resume from checkpoint
+        ##### Resume from checkpoint #####
+        
         if cfg["RESUME"] : 
             console.print("Resuming from checkpoint...")
 
@@ -169,39 +185,53 @@ def ddp_setup() :
 
 # Load pretraind ResNet50 model
 def load_model(cfg: dict) -> nn.Module :
-    model = ModifiedResNet(
-        in_channels     = cfg["MODEL"]["INCHANNELS"],
-        out_channels    = 64,
-        num_classes     = cfg["MODEL"]["CATEGORY_NUM"],
-        use_cbam_layers = cfg["MODEL"]["CBAM"], 
-        use_se_layers   = cfg["MODEL"]["SENET"]  
-    )
+    
+    # Load ResNet38
+    if cfg["type"].strip().lower() == "resnet38" :
+        from model.ResNet_38d import Net_CAM, convert_mxnet_to_torch
+        
+        console.print("Model: ResNet38")
+        model = Net_CAM(D=256, C=cfg["MODEL"]["CATEGORY_NUM"])
+        model.load_state_dict(
+            convert_mxnet_to_torch(os.path.join(cfg["ROOT"], "pretrained/resnet_38d.params")),
+            strict=False
+        )
+    # Load ResNet50 (default model)
+    else :
+        console.print("Model: ResNet50")
+        model = ModifiedResNet(
+            in_channels     = cfg["MODEL"]["INCHANNELS"],
+            out_channels    = 64,
+            num_classes     = cfg["MODEL"]["CATEGORY_NUM"],
+            use_cbam_layers = cfg["MODEL"]["CBAM"], 
+            use_se_layers   = cfg["MODEL"]["SENET"]  
+        )
 
-    # Load the pretrained weights into ModifiedResNet
-    pretrained_resnet = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
-    pretrained_dict = pretrained_resnet.state_dict()
-    model_dict = model.state_dict()
+        # Load the pretrained weights into ModifiedResNet
+        pretrained_resnet = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
+        pretrained_dict = pretrained_resnet.state_dict()
+        model_dict = model.state_dict()
 
-    # Filter out unnecessary keys and find out which layers match
-    pretrained_dict_filtered = {
-        k: v for k, v in pretrained_dict.items() if k in model_dict \
-        and v.shape == model_dict[k].shape and k not in
-        [
-            "fc.weight", 
-            "fc.bias", 
-            "layer3.0.conv1.weight", 
-            "layer3.0.conv2.weight", 
-            "layer3.0.conv3.weight", 
-            "layer4.0.conv1.weight", 
-            "layer4.0.conv2.weight", 
-            "layer4.0.conv3.weight"
-        ]
-    }
+        # Filter out unnecessary keys and find out which layers match
+        pretrained_dict_filtered = {
+            k: v for k, v in pretrained_dict.items() if k in model_dict \
+            and v.shape == model_dict[k].shape and k not in
+            [
+                "fc.weight", 
+                "fc.bias", 
+                "layer3.0.conv1.weight", 
+                "layer3.0.conv2.weight", 
+                "layer3.0.conv3.weight", 
+                "layer4.0.conv1.weight", 
+                "layer4.0.conv2.weight", 
+                "layer4.0.conv3.weight"
+            ]
+        }
 
-    # Update the model dictionary with the pretrained weights
-    model_dict.update(pretrained_dict_filtered)
-    # Load the state_dict into the model
-    model.load_state_dict(model_dict)
+        # Update the model dictionary with the pretrained weights
+        model_dict.update(pretrained_dict_filtered)
+        # Load the state_dict into the model
+        model.load_state_dict(model_dict)
 
     return model
 

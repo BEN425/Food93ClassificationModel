@@ -78,7 +78,7 @@ class FoodDataset(data.Dataset):
 
         return img
     
-    def __getitem__(self, index: int) -> torch.Tensor :
+    def __getitem__(self, index: int) -> "tuple[torch.Tensor, torch.Tensor, int]" :
         '''
         Get an image from dataset
         
