@@ -322,8 +322,8 @@ def evaluate_dataset_class_acc(
         img: torch.Tensor = img.to(device)
         label: torch.Tensor = label.to(device, dtype=torch.float32)
         
-        out = model(img)
-        logits = torch.sigmoid(out)["pred"]
+        out = model(img)["pred"]
+        logits = torch.sigmoid(out)
         pred = torch.round(logits) # Threshold = 0.5
         
         # Loss

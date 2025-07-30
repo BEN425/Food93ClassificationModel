@@ -7,6 +7,8 @@ After each epoch, the model checkpoint and evaluation results are saved in `Resu
 
 import os
 import datetime
+import logging
+import pprint
 
 import numpy as np
 from scipy import ndimage as ndi
@@ -47,15 +49,16 @@ class Trainer():
     '''
     
     def __init__(
-            self,
-            dataset: "dict[str, DataLoader]",
-            model: nn.Module,
-            opt: torch.optim.Optimizer,
-            device: torch.types.Device,
-            cfg: "dict[str]",
-            sam: nn.Module = None,
-            using_ddp: bool = False
-        ):
+        self,
+        dataset: "dict[str, DataLoader]",
+        model: nn.Module,
+        opt: torch.optim.Optimizer,
+        device: torch.types.Device,
+        cfg: "dict[str]",
+        logger: logging.Logger = None,
+        sam: nn.Module = None,
+        using_ddp: bool = False,
+    ):
         
         self.train_dataloader = dataset["train"]
         self.valid_dataloader = dataset["valid"]
@@ -66,8 +69,10 @@ class Trainer():
         self.opt = opt
         self.device = device
         self.gpu_id = int(os.environ.get("LOCAL_RANK", 0))
+        self.is_main = self.gpu_id == 0
         self.using_ddp = using_ddp
         self.ema = EMA(self.model.module if using_ddp else self.model)
+        self.logger = logger
         
         # Resume from the lsat checkpoint
         if cfg["RESUME"]:
@@ -87,8 +92,32 @@ class Trainer():
             save_model_path,
             f"{date}_{cfg['MODEL']['NAME']}")
         
+        if self.logger is not None and self.is_main :
+            self.logger.info(f"Saved model path: \"{save_model_path}\"")
+            self.logger.info(f"Log path: \"{log_path}\"")
+        
         # Create SummaryWriter and specify log path
         self.writer = SummaryWriter(log_dir=log_path)
+        
+        ##### DEBUG #####
+        
+        self.log_loss = True
+        self.loss_logger = logging.getLogger("loss")
+        self.loss_file = open(os.path.join(cfg["SAVE_DIR"], "logs", sub_dir, "loss.csv"), "w")
+        loss_hander = logging.StreamHandler(self.loss_file)
+        self.loss_logger.addHandler(loss_hander)
+        self.loss_logger.setLevel(logging.DEBUG)
+        if self.log_loss :
+            self.loss_logger.info("CLS, SSC, CPM, Total")
+        
+        self.log_cls = True
+        self.cls_logger = logging.getLogger("cls_loss")
+        self.cls_file = open(os.path.join(cfg["SAVE_DIR"], "logs", sub_dir, "cls_loss.csv"), "w")
+        cls_hander = logging.StreamHandler(self.cls_file)
+        self.cls_logger.addHandler(cls_hander)
+        self.cls_logger.setLevel(logging.DEBUG)
+        
+        ##### DEBUG #####
     
     def train(
         self,
@@ -119,6 +148,9 @@ class Trainer():
         # Calculate progress bar
         batch_size = cfg["BATCH_SIZE"]
         total = len(self.train_dataloader.dataset) // batch_size
+        
+        if self.logger is not None and self.is_main :
+            self.logger.info(f"Batch size: {batch_size}; Epoch steps: {total}")
         
         # Store results of each epoch
         record_epoch = []
@@ -183,7 +215,12 @@ class Trainer():
                 
                 # Classification Loss
                 #? focal loss implicitly applies sigmoid
-                loss_cls = cal_class_focal_loss(out, label, class_alpha, gamma)
+                loss_cls = cal_class_focal_loss(out, label, class_alpha, gamma, mean=False)
+                
+                if self.log_cls :
+                    self.cls_logger.debug(",".join(str(item) for item in loss_cls.mean(dim=0).tolist()))
+                
+                loss_cls = loss_cls.mean()
                 
                 # Process SSC
                 if self.cfg["USE_SSC"] :
@@ -229,6 +266,9 @@ class Trainer():
                 
                 # Total loss
                 loss = loss_cls + loss_ssc + loss_cpm
+                
+                if self.log_loss and self.is_main :
+                    self.loss_logger.debug(f"{loss_cls.item()},{loss_ssc.item()},{loss_cpm.item()},{loss.item()}")
 
                 # Back propagation
                 loss.backward(retain_graph=True)
@@ -265,10 +305,12 @@ class Trainer():
             record_dict["train_cls_loss"]   /= len(self.train_dataloader)
             record_dict["train_ssc_loss"]   /= len(self.train_dataloader)
             record_dict["train_cpm_loss"]   /= len(self.train_dataloader)
-
+            
             # Evaluate on validation set
 
             if cfg["TEST_METRICS"] :
+                if self.logger is not None and self.is_main :
+                    self.logger.info("Evaluating on validation set...")
                 valid_results = evaluate_dataset(
                     self.model,
                     self.valid_dataloader,
@@ -281,10 +323,13 @@ class Trainer():
             
             # Save metrics and checkpoint of the epoch
             # Only record on the main process
-            # if self.is_main :
-            self._monitor(record_dict, epoch)
-            self._save_checkpoint(record_dict, epoch)
             record_dict["epoch"] = epoch
+            if self.is_main :
+                self._monitor(record_dict, epoch)
+                self._save_checkpoint(record_dict, epoch)
+                if self.logger is not None :
+                    self.logger.info(f"Epoch {epoch}:\n{pprint.pformat(record_dict)}")
+            
             record_epoch.append(record_dict)
 
         # Close writer
@@ -538,8 +583,7 @@ class Trainer():
     def _monitor(self, record_dict: "dict[str, float]", epoch: int):
         for key, value in record_dict.items():
             self.writer.add_scalar(key, value, epoch)
-        if self.gpu_id == 0 :
-            console.print(record_dict)
+        console.print(record_dict)
     
     def _save_checkpoint(self, record_dict: "dict[str, float]", epoch: int):
         checkpoint_name = f"{self.save_model_name}_epoch_{epoch}.pth.tar"
@@ -554,7 +598,13 @@ class Trainer():
             checkpoint_name
         )
         console.print(f"Saved checkpoint: \"{checkpoint_name}\"")
+        self.logger.info(f"Saved checkpoint: \"{checkpoint_name}\"")
 
+    def __del__(self) :
+        self.writer.flush()
+        self.writer.close()
+        self.cls_file.close()
+        self.loss_file.close()
 
 if __name__ == "__main__" :
     import time

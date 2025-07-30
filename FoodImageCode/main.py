@@ -22,7 +22,9 @@ from cfgparser import CfgParser
 import pillow_avif # AVIF format support for PIL
 
 from rich import get_console
+import logging
 console = get_console()
+logger  = logging.getLogger("FoodImageCode")
 
 
 ### Main Function ###
@@ -32,6 +34,7 @@ def main(cfg: dict) :
 
         ##### Initialization #####
         
+        logger.info("Initializing...")
         console.print("Initializing...")
         results = None
 
@@ -49,15 +52,20 @@ def main(cfg: dict) :
         
         init_seed(cfg["SEED"])
         
+        logger.info(f"world_size = {world_size}; ddp = {using_ddp}; rank = {rank}; device = {device}; seed = {cfg['SEED']}")
+        
         ##### Load dataset #####
         
+        logger.info("Loading dataset...")
         console.print("Loading dataset...")
         dataset = load_dataset(cfg, using_ddp, rank)
         
         ##### Load model #####
         
-        # Load classification model
+        logger.info("Loading model...")
         console.print("Loading model...")
+        
+        # Load classification model
         model = load_model(cfg)
         model = model.to(device)
         start_epoch, end_epoch = 0, cfg["EPOCHS"]
@@ -71,9 +79,12 @@ def main(cfg: dict) :
         else :
             sam = None
         
+        logger.info(f"Model: \"{cfg['MODEL']['TYPE']}, {cfg['MODEL']['NAME']}\"\n{model}")
+        logger.info(f"SAM: \"{cfg['SAM_DIR']}\"\n{sam}")
+        
         ###### Load optimizer #####
 
-        opt_name = cfg["OPTIMIZER"].strip().lower()
+        opt_name = cfg["MODEL"]["OPTIMIZER"].strip().lower()
         # Poly Optimizer
         # TODO: Add poly optimizer
         if "poly" in opt_name :
@@ -95,6 +106,8 @@ def main(cfg: dict) :
                     weight_decay=cfg["MODEL"]["WEIGHT_DECAY"]
                 )
 
+        logger.info(f"Optimizer:\n{opt}")
+
         ##### Resume from checkpoint #####
         
         if cfg["RESUME"] : 
@@ -108,7 +121,13 @@ def main(cfg: dict) :
             opt.load_state_dict(checkpoint["opt"])
             start_epoch += checkpoint["epoch"] + 1
             end_epoch += checkpoint["epoch"]
+            
             console.print(f"Resumed from epoch {start_epoch} to {end_epoch}")
+            logger.info(f"Resumed from \"{cfg['CHECKPOINT_PATH']}\": Epoch {start_epoch} to {end_epoch}")
+        else :
+            logger.info(f"Start training from epoch {start_epoch} to {end_epoch}")
+        
+        ##### Training #####
 
         # Load class frequencies and entropies for focal loss parameter ɑ
         # console.print("Loading class frequencies and entropies...")
@@ -123,6 +142,7 @@ def main(cfg: dict) :
         #     dist.barrier()
 
         # Training
+        logger.info("Setup trainer...")
         console.print("Training...")
         trainer = Trainer(
             dataset = dataset,
@@ -131,13 +151,16 @@ def main(cfg: dict) :
             device = device,
             cfg = cfg,
             sam = sam,
-            using_ddp = using_ddp
+            using_ddp = using_ddp,
+            logger=logger,
         )
+        logger.info("Start training...")
         results = trainer.train(
             start_epoch, end_epoch, cfg,
             class_alpha=cfg["LOSS"]["ALPHA"],
             gamma=cfg["LOSS"]["GAMMA"],
         )
+        logger.info("Training finished.")
 
     finally :
 
@@ -187,7 +210,7 @@ def ddp_setup() :
 def load_model(cfg: dict) -> nn.Module :
     
     # Load ResNet38
-    if cfg["type"].strip().lower() == "resnet38" :
+    if cfg["MODEL"]["TYPE"].strip().lower() == "resnet38" :
         from model.ResNet_38d import Net_CAM, convert_mxnet_to_torch
         
         console.print("Model: ResNet38")
@@ -302,6 +325,9 @@ def load_dataset(cfg: dict, using_ddp: bool = False, rank: int = 0) -> "dict[str
         transforms.Normalize(mean=[0.522, 0.475, 0.408], std=[0.118, 0.115, 0.117])
     ])
 
+    logger.info(f"Train transforms:\n{train_trfs}")
+    logger.info(f"Valid transforms:\n{valid_trfs}")
+
     # Load dataset and dataloader
 
     # Split batch to multiple GPUs
@@ -344,21 +370,51 @@ def load_dataset(cfg: dict, using_ddp: bool = False, rank: int = 0) -> "dict[str
 
 if __name__ == "__main__":
     import time
+    import shutil
+    import pprint
     start = time.time()
     
     console.print("Parsing config...")
 
     try :
+        # Read config
         cfgparser = CfgParser(config_path="./cfg/Setting.yml")
         cfg = cfgparser.cfg_dict
+        
+        # Setup logger
+        log_path = os.path.join(cfg["SAVE_DIR"], "logs", cfg["SAVE_SUB_NAME"])
+        os.makedirs(log_path, exist_ok=True)
+        # Check directory empty to prevent accidentally overwriting results
+        if os.listdir(log_path) :
+            raise Exception(f"Result folder \"{log_path}\" is not empty. Please change \"SAVE_SUB_NAME\" in config file or remove the results.")
+        log_file = open(os.path.join(log_path, "record.log"), "w")
+        handler = logging.StreamHandler(log_file)
+
+        # file_handler = logging.FileHandler(os.path.join(log_path, "record.log"), mode="w", delay=False)
+        formatter = logging.Formatter(
+            "[%(levelname)-5s][%(asctime)s] (%(filename)s:%(lineno)d) %(message)s",
+            datefmt="%Y-%m-%d %H:%M:%S",
+        )
+        handler.setFormatter(formatter)
+        logger.addHandler(handler)
+        logger.setLevel(logging.INFO)
+
+        # Copy csv files
+        shutil.copyfile(cfg["ALL_CSV_DIR"],   os.path.join(log_path, os.path.basename(cfg["ALL_CSV_DIR"])))
+        shutil.copyfile(cfg["TRAIN_CSV_DIR"], os.path.join(log_path, os.path.basename(cfg["TRAIN_CSV_DIR"])))
+        shutil.copyfile(cfg["VALID_CSV_DIR"], os.path.join(log_path, os.path.basename(cfg["VALID_CSV_DIR"])))
+        shutil.copyfile(cfg["TEST_CSV_DIR"],  os.path.join(log_path, os.path.basename(cfg["TEST_CSV_DIR"])))
+        
+        logger.info(f"Config:\n{pprint.pformat(cfg, indent=4)}")
+        
         console.print(cfg)
-        console.print("This is the config of training.")
         console.print(
             "Make sure to run \"make_image_csv.py\""
             ", set up configs and complete preliminaries.", style="yellow")
         input("Press ENTER to continue > ")
         main(cfg)
     except Exception :
+        logger.error("Error", exc_info=True)
         console.print_exception(show_locals=False)
     finally :
         import gc
@@ -367,4 +423,6 @@ if __name__ == "__main__":
         
         end = time.time()
         dt = end - start
-        console.print(f"Time used = {dt}")
+        console.print(f"Time used = {dt:.3f}")
+        logger.info(f"Time used = {dt:.3f}")
+        log_file.close()

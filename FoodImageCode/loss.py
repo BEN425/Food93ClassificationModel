@@ -29,6 +29,7 @@ def cal_class_focal_loss(
     label: torch.Tensor,
     class_alpha: torch.Tensor = .25,
     gamma: float = 2,
+    mean: bool = True,
 ) -> torch.Tensor:
     """
     Calculate sigmoid focal loss between `logits` and `label`.
@@ -57,7 +58,7 @@ def cal_class_focal_loss(
     alpha_t = (1 - class_alpha) * label + class_alpha * (1 - label)
     loss = alpha_t * loss
 
-    return loss.mean()
+    return loss.mean() if mean else loss
 
 def cal_l2_regularization(model, beta=1e-4) -> torch.Tensor:
     l2_reg = 0.0
