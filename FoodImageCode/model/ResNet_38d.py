@@ -343,3 +343,10 @@ class PolyOptimizer_adam(torch.optim.Adam):
         self.global_step += 1
 
 ##### #####
+
+
+if __name__ == "__main__" :
+    
+    def load_resnet38() :
+        model = Net_CAM()
+        model.load_state_dict(models.resnet38d.convert_mxnet_to_torch('./pretrained/resnet_38d.params'), strict=False)

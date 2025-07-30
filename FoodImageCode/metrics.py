@@ -164,7 +164,7 @@ def cal_error_nums(pred: torch.Tensor, label: torch.Tensor) :
     
     Return :
         err_label: Number of wrong predicted labels
-        correct_data: Number of correct predicted data
+        err_data: Number of wrong predicted data
     '''
 
     err_batch = (pred != label).sum(dim=1)
@@ -380,3 +380,16 @@ def evaluate_dataset_class_acc(
         record_dict["conf_matrix"] = record_dict["conf_matrix"].tolist()
 
     return record_dict
+
+if __name__ == "__main__":
+    pred = torch.Tensor([
+        [0, 0, 1, 0, 0],
+        [0, 0, 0, 0, 1],
+    ])
+    label = torch.Tensor([
+        [1, 0, 1, 0, 1],
+        [0, 0, 0, 0, 1],
+    ])
+    
+    err_label, err_data = cal_error_nums(pred, label)
+    print(err_label, err_data)

@@ -296,6 +296,99 @@ class ModifiedResNet(nn.Module):
     #     out4 = self.layer4(out3)
     #     return out4
 
+class ModifiedResNet_CAM(nn.Module):
+    def __init__(self, in_channels: int, out_channels: int, num_classes=24,
+            use_cbam_layers: "list[bool]"=[False, False, False, False],
+            use_se_layers: "list[bool]"=[False, False, False, False]
+        ):
+
+        super().__init__()
+        self.in_channels = out_channels
+        block_nums = [3, 4, 6, 3]
+
+        self.conv1 = conv3x3(in_channels, out_channels, 7, 2)
+        self.bn1 = batch_norm_2d(out_channels)
+        self.relu = nn.ReLU()
+
+        self.layer1 = self._make_layer(Bottleneck, 64, block_nums[0], stride=1,
+                                        use_cbam=use_cbam_layers[0], use_se=use_se_layers[0])
+        #print("layer1", self.layer1)
+        self.layer2 = self._make_layer(Bottleneck, 128, block_nums[1], stride=2,
+                                        use_cbam=use_cbam_layers[1], use_se=use_se_layers[1])
+        #print("layer2", self.layer2)
+        self.layer3 = self._make_layer(Bottleneck, 256, block_nums[2], stride=2, dilate=True,
+                                        use_cbam=use_cbam_layers[2], use_se=use_se_layers[2])
+        #print("layer3", self.layer3)
+        self.layer4 = self._make_layer(Bottleneck, 512, block_nums[3], stride=2, dilate=True,
+                                        use_cbam=use_cbam_layers[3], use_se=use_se_layers[3])
+        #print("layer4", self.layer4)
+
+        self.fc = nn.Conv2d(self.in_channels, num_classes, 1, bias=False)
+        self.avgpool = nn.AdaptiveAvgPool2d(1)
+        # self.fc = nn.Linear(512 * 4, num_classes)
+
+        self.apply(self._init_weights)
+    
+    def _init_weights(self, module: nn.Module):
+        if isinstance(module, nn.Conv2d):
+            # init.xavier_uniform_(module.weight)
+            init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
+            if module.bias is not None:
+                # module.bias.data.zero_()
+                init.zeros_(module.bias)
+        elif isinstance(module, nn.Linear):
+            init.xavier_uniform_(module.weight)
+            if module.bias is not None:
+                init.zeros_(module.bias)
+        elif isinstance(module, (nn.BatchNorm2d, nn.SyncBatchNorm)):
+            init.ones_(module.weight)
+            init.zeros_(module.bias)
+
+    def _make_layer(self, block: nn.Module, out_channels: int, num_blocks: int, stride=1, dilate=False, use_cbam=False, use_se=False):
+        strides = [stride] + [1] * (num_blocks - 1)
+        layers = []
+        for idx, stride in enumerate(strides):
+            # if idx == 0 and stride != 1:
+            #     layers.append(block(self.in_channels, out_channels, stride, dilate=False))
+            # else:
+            #     layers.append(block(self.in_channels, out_channels, 1, dilate))
+            layers.append(block(self.in_channels, out_channels, stride, dilate, use_cbam, use_se))
+            self.in_channels = out_channels * 4
+        return nn.Sequential(*layers)
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor :
+
+        # Conv 1
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.relu(out)
+        
+        # Conv 2~5
+        # bs, 64, 112, 112
+        out1 = self.layer1(out)
+        # print("layer1 output:", out1.shape)
+        out2 = self.layer2(out1)
+        # print("layer2 output:", out2.shape)
+        out3 = self.layer3(out2)
+        # print("layer3 output:", out3.shape)
+        out4 = self.layer4(out3)
+        # print("layer4 output:", out4.shape)
+        
+        # CAM
+        cam = self.fc(out4)
+        # print(f"cam: {cam.shape}")
+        
+        # Global average pooling
+        pred = self.avgpool(cam).squeeze(3).squeeze(2)
+        
+        # print("final output:", pred.shape)
+        
+        return {
+            "feat": out4,
+            "pred": pred,
+            "cam" : cam
+        }
+
 ##### #####
 
 
@@ -304,7 +397,7 @@ if __name__ == '__main__':
     from rich import print
     
     def load_resnet50() :
-        model = ModifiedResNet(3, 64)
+        model = ModifiedResNet_CAM(3, 64, 93)
         pretrained_resnet = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
 
         # Load the pretrained weights into ModifiedResNet
@@ -339,12 +432,8 @@ if __name__ == '__main__':
         #     print(layer)
 
         #Test the model with dummy input
-        # x = torch.randn(2, 3, 224, 224)
-        # out = torch.sigmoid(model(x))
-        # print(out)
-
-    def load_resnet38() :
-        model = Net_CAM()
-        model.load_state_dict(models.resnet38d.convert_mxnet_to_torch('./pretrained/resnet_38d.params'), strict=False)
+        x = torch.randn(2, 3, 224, 224)
+        out = torch.sigmoid(model(x)["pred"])
+        print(out)
 
     load_resnet50()

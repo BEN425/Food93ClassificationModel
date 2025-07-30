@@ -24,6 +24,16 @@ train_csv_path = cfg["TRAIN_CSV_DIR"]
 test_csv_path  = cfg["TEST_CSV_DIR"]
 val_csv_path   = cfg["VALID_CSV_DIR"]
 
+# Create output directories
+os.makedirs(os.path.dirname(all_csv_path), exist_ok=True)
+os.makedirs(os.path.dirname(train_csv_path), exist_ok=True)
+os.makedirs(os.path.dirname(test_csv_path), exist_ok=True)
+os.makedirs(os.path.dirname(val_csv_path), exist_ok=True)
+
+
+console.print(cfg)
+input("Press ENTER to continue > ")
+
 # Initialize seed
 random.seed(cfg["SEED"])
 
