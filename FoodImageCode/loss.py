@@ -122,6 +122,7 @@ def cal_ssc_loss(
     # print(f"pred: {pred_ssc.shape}")
     # print(f"loss: {loss_ssc.shape}")
     
+    # se_map = se_map - 1
     if  torch.isnan(loss_ssc):
         print("loss_ssc is NaN!")
 

@@ -84,3 +84,7 @@ Conda 使用方式：
 - 安裝套件：`conda install <套件名稱>`
 - 離開環境：`deactivate`
 - 刪除環境：`conda env remove -n <環境名稱>`
+
+## TWCC
+
+TWCC 環境中 Pyenv 無法正常運作，請參考 __Conda__ 章節建立環境

@@ -181,6 +181,7 @@ def write_to_csv(file_path: str, dataset: "list[dict]") -> None:
             writer.writerow((path, *mh_label))
 
 # Write split datasets to csv files
+
 write_to_csv(train_csv_path, train_set)
 write_to_csv(val_csv_path,   valid_set)
 write_to_csv(test_csv_path,  test_set)

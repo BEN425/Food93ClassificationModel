@@ -55,6 +55,8 @@ class FoodDataset(data.Dataset):
                     list(int(i) for i in label)
                 ))
         
+        # self.datalist = self.datalist[:10] # test
+        
         self.root = root
         self.add_hsv = hsv
         

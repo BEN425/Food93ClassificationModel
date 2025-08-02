@@ -192,7 +192,7 @@ test_set  = []
 #         test_set.extend(single_images[train_size+val_size:])
 
 # Case 2: Split failed images into training sets
-with open("failed.txt", "r") as file :
+with open("failed_0503.txt", "r") as file :
     failed = file.readlines()
 for category, image_lst in category_to_images.items():
     # Find failed images
@@ -208,6 +208,7 @@ for category, image_lst in category_to_images.items():
         train_set.extend(image_lst[:train_size])
         valid_set.extend(image_lst[train_size : train_size+valid_size])
         test_set.extend(image_lst[train_size+valid_size:])
+        print(category)
     else :
         train_set.extend(failed_imgs)
         
@@ -239,6 +240,7 @@ def write_to_csv(file_path: str, dataset: "list[dict]") -> None:
             writer.writerow((path, *mh_label))
 
 # Write split datasets to csv files
+
 write_to_csv(train_csv_path, train_set)
 write_to_csv(val_csv_path,   valid_set)
 write_to_csv(test_csv_path,  test_set)

@@ -70,7 +70,7 @@ def main(cfg: dict) :
         model = model.to(device)
         start_epoch, end_epoch = 0, cfg["EPOCHS"]
         if using_ddp :
-            ddp_model = DDP(model, device_ids=[device])
+            ddp_model = DDP(model, device_ids=[device], find_unused_parameters=True)
 
         # Load SAM model
         if cfg["USE_CPM"] :
@@ -306,7 +306,7 @@ def load_dataset(cfg: dict, using_ddp: bool = False, rank: int = 0) -> "dict[str
         transforms.CenterCrop(224),
         # Apply random transform to augment images
         
-        # transforms.RandomHorizontalFlip(p=0.5),
+        transforms.RandomHorizontalFlip(p=0.5),
         # transforms.RandomRotation(degrees=10),
         # transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.05),
         # transforms.RandomAffine(
@@ -342,8 +342,8 @@ def load_dataset(cfg: dict, using_ddp: bool = False, rank: int = 0) -> "dict[str
         valid_dataset = FoodDataset(cfg["VALID_CSV_DIR"], transform=valid_trfs, hsv=False, root=cfg["ROOT"])
 
     #? Use `DistributedSampler` for DDP 
-    train_sampler = DistributedSampler(train_dataset, rank=rank, shuffle=True)  if using_ddp else None
-    valid_sampler = DistributedSampler(valid_dataset, rank=rank, shuffle=False) if using_ddp else None
+    train_sampler = DistributedSampler(train_dataset, seed=cfg["SEED"], rank=rank, shuffle=True)  if using_ddp else None
+    valid_sampler = DistributedSampler(valid_dataset, seed=cfg["SEED"], rank=rank, shuffle=False) if using_ddp else None
 
     train_dataloader = DataLoader(
         train_dataset,
@@ -378,19 +378,26 @@ if __name__ == "__main__":
 
     try :
         # Read config
-        cfgparser = CfgParser(config_path="./cfg/Setting.yml")
+        config_path = os.environ.get("CONFIG_PATH", "./cfg/Setting.yml")
+        cfgparser = CfgParser(config_path=config_path)
         cfg = cfgparser.cfg_dict
         
-        # Setup logger
         log_path = os.path.join(cfg["SAVE_DIR"], "logs", cfg["SAVE_SUB_NAME"])
-        os.makedirs(log_path, exist_ok=True)
+        
+        console.print(f"Cconfig path: \"{config_path}\"")
+        console.print(cfg)
+        console.print(
+            "Make sure to set up environment"
+            ", set up configs and complete preliminaries.", style="yellow")
+        input("Press ENTER to continue > ")
+        
         # Check directory empty to prevent accidentally overwriting results
-        if os.listdir(log_path) :
-            raise Exception(f"Result folder \"{log_path}\" is not empty. Please change \"SAVE_SUB_NAME\" in config file or remove the results.")
+        # if os.listdir(log_path) :
+        #     raise Exception(f"Result folder \"{log_path}\" is not empty. Please change \"SAVE_SUB_NAME\" in config file or remove the results.")
+        # Setup logger
+        os.makedirs(log_path, exist_ok=True)
         log_file = open(os.path.join(log_path, "record.log"), "w")
         handler = logging.StreamHandler(log_file)
-
-        # file_handler = logging.FileHandler(os.path.join(log_path, "record.log"), mode="w", delay=False)
         formatter = logging.Formatter(
             "[%(levelname)-5s][%(asctime)s] (%(filename)s:%(lineno)d) %(message)s",
             datefmt="%Y-%m-%d %H:%M:%S",
@@ -398,6 +405,9 @@ if __name__ == "__main__":
         handler.setFormatter(formatter)
         logger.addHandler(handler)
         logger.setLevel(logging.INFO)
+        
+        logger.info(f"Config path: \"{config_path}\"")
+        logger.info(f"Config:\n{pprint.pformat(cfg, indent=4)}")
 
         # Copy csv files
         shutil.copyfile(cfg["ALL_CSV_DIR"],   os.path.join(log_path, os.path.basename(cfg["ALL_CSV_DIR"])))
@@ -405,13 +415,6 @@ if __name__ == "__main__":
         shutil.copyfile(cfg["VALID_CSV_DIR"], os.path.join(log_path, os.path.basename(cfg["VALID_CSV_DIR"])))
         shutil.copyfile(cfg["TEST_CSV_DIR"],  os.path.join(log_path, os.path.basename(cfg["TEST_CSV_DIR"])))
         
-        logger.info(f"Config:\n{pprint.pformat(cfg, indent=4)}")
-        
-        console.print(cfg)
-        console.print(
-            "Make sure to run \"make_image_csv.py\""
-            ", set up configs and complete preliminaries.", style="yellow")
-        input("Press ENTER to continue > ")
         main(cfg)
     except Exception :
         logger.error("Error", exc_info=True)
@@ -425,4 +428,5 @@ if __name__ == "__main__":
         dt = end - start
         console.print(f"Time used = {dt:.3f}")
         logger.info(f"Time used = {dt:.3f}")
-        log_file.close()
+        if logger.hasHandlers() :
+            log_file.close()

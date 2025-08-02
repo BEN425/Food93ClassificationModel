@@ -9,15 +9,18 @@ import os
 import datetime
 import logging
 import pprint
+from itertools import compress
 
 import numpy as np
 from scipy import ndimage as ndi
 from skimage.feature import peak_local_max
+from PIL import Image
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.types
+import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
@@ -30,6 +33,130 @@ from metrics import cal_f1_score_acc, cal_tp_fp_fn_tn, cal_error_nums, evaluate_
 
 from rich import get_console
 console = get_console()
+
+
+##### DEBUG #####
+
+LOG_DEBUG = True
+VAL_IMGS_200 = [
+    # Bunashimeji
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G6_Mushrooms/Bunashimeji/Bunashimeji_95.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G6_Mushrooms/Bunashimeji/Bunashimeji_7.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G6_Mushrooms/Bunashimeji/Bunashimeji_223.jpg",
+    # Radish
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G2_LightGreenVegetables/Radish/Radish_156.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G2_LightGreenVegetables/Radish/Radish_705.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G2_LightGreenVegetables/Radish/Radish_69.jpg",
+    # Zucchini
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G4_GourdVegetables/Zucchini/Zucchini_31.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G4_GourdVegetables/Zucchini/Zucchini_121.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G4_GourdVegetables/Zucchini/Zucchini_440.jpg",
+    # SweetPepper
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G4_GourdVegetables/Zucchini/SweetPepper_85.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G1_DarkGreenAndYellowVegetables/SweetPepper/SweetPepper_1365.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G1_DarkGreenAndYellowVegetables/SweetPepper/SweetPepper_2982.jpg",
+    # Pineapple
+    "Database/aisingle_food_preprocess_0503/6_Fruit/H_Fruits/H1_FreshFruits/Pineapple/Pineapple_203.jpg",
+    "Database/aisingle_food_preprocess_0503/6_Fruit/H_Fruits/H1_FreshFruits/Pineapple/Pineapple_7.jpg",
+    "Database/aisingle_food_preprocess_0503/6_Fruit/H_Fruits/H1_FreshFruits/Pineapple/Pineapple_242.jpg",
+    # Shiitake
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G6_Mushrooms/ShiitakeMushrooms/ShiitakeMushrooms_120.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G6_Mushrooms/ShiitakeMushrooms/ShiitakeMushrooms_188.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G6_Mushrooms/ShiitakeMushrooms/ShiitakeMushrooms_583.jpg",
+    # Onion
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G2_LightGreenVegetables/Onions/Onions_97.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G2_LightGreenVegetables/Onions/Onions_756.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G2_LightGreenVegetables/Onions/Onions_564.jpg",
+    # Agaric
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G6_Mushrooms/Agaric/Agaric_44.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G6_Mushrooms/Agaric/Agaric_4861.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G6_Mushrooms/Agaric/Agaric_115.jpg",
+    # CherryTomato
+    "Database/aisingle_food_preprocess_0503/6_Fruit/H_Fruits/H1_FreshFruits/CherryTomato/CherryTomato_106.jpg",
+    "Database/aisingle_food_preprocess_0503/6_Fruit/H_Fruits/H1_FreshFruits/CherryTomato/CherryTomato_724.jpg",
+    "Database/aisingle_food_preprocess_0503/6_Fruit/H_Fruits/H1_FreshFruits/CherryTomato/CherryTomato_205.jpg"
+]
+VAL_IMGS_100 = [
+    # Bunashimeji
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G6_Mushrooms/Bunashimeji/Bunashimeji_181.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G6_Mushrooms/Bunashimeji/Bunashimeji_75.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G6_Mushrooms/Bunashimeji/Bunashimeji_234.jpg",
+    # Radish
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G2_LightGreenVegetables/Radish/Radish_84.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G2_LightGreenVegetables/Radish/Radish_151.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G2_LightGreenVegetables/Radish/Radish_76.jpg",
+    # Zucchini
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G4_GourdVegetables/Zucchini/Zucchini_122.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G4_GourdVegetables/Zucchini/Zucchini_77.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G4_GourdVegetables/Zucchini/Zucchini_512.jpg",
+    # SweetPepper
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G1_DarkGreenAndYellowVegetables/SweetPepper/SweetPepper_93.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G4_GourdVegetables/Zucchini/SweetPepper_85.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G1_DarkGreenAndYellowVegetables/SweetPepper/SweetPepper_505.jpg",
+    # Pineapple
+    "Database/aisingle_food_preprocess_0503/6_Fruit/H_Fruits/H1_FreshFruits/Pineapple/Pineapple_196.jpg",
+    "Database/aisingle_food_preprocess_0503/6_Fruit/H_Fruits/H1_FreshFruits/Pineapple/Pineapple_295.jpg",
+    "Database/aisingle_food_preprocess_0503/6_Fruit/H_Fruits/H1_FreshFruits/Pineapple/Pineapple_74.jpg",
+    # Shiitake
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G6_Mushrooms/ShiitakeMushrooms/ShiitakeMushrooms_144.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G6_Mushrooms/ShiitakeMushrooms/ShiitakeMushrooms_204.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G6_Mushrooms/ShiitakeMushrooms/ShiitakeMushrooms_71.jpg",
+    # Onion
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G2_LightGreenVegetables/Onions/Onions_34.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G2_LightGreenVegetables/Onions/Onions_145.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G2_LightGreenVegetables/Onions/Onions_172.jpg",
+    # Agaric
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G6_Mushrooms/Agaric/Agaric_73.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G6_Mushrooms/Agaric/Agaric_4539.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G6_Mushrooms/Agaric/Agaric_203.jpg",
+    # CherryTomato
+    "Database/aisingle_food_preprocess_0503/6_Fruit/H_Fruits/H1_FreshFruits/CherryTomato/CherryTomato_148.jpg",
+    "Database/aisingle_food_preprocess_0503/6_Fruit/H_Fruits/H1_FreshFruits/CherryTomato/CherryTomato_43.jpg",
+    "Database/aisingle_food_preprocess_0503/6_Fruit/H_Fruits/H1_FreshFruits/CherryTomato/CherryTomato_545.jpg"
+]
+VAL_IMGS_300 = [
+    # Bunashimeji
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G6_Mushrooms/Bunashimeji/Bunashimeji_36.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G6_Mushrooms/Bunashimeji/Bunashimeji_46.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G6_Mushrooms/Bunashimeji/Bunashimeji_227.jpg",
+    # Radish
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G2_LightGreenVegetables/Radish/Radish_202.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G2_LightGreenVegetables/Radish/Radish_132.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G2_LightGreenVegetables/Radish/Radish_8.jpg",
+    # Zucchini
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G4_GourdVegetables/Zucchini/Zucchini_30.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G4_GourdVegetables/Zucchini/Zucchini_440.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G4_GourdVegetables/Zucchini/Zucchini_202.jpg",
+    # SweetPepper
+    "Database/aisingle_food_preprocess_0503/3_FishMeatAndEgg/D_Meat/D2_BeefAndProducts/Beef/Beef_ 304.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G1_DarkGreenAndYellowVegetables/SweetPepper/SweetPepper_80.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G1_DarkGreenAndYellowVegetables/SweetPepper/SweetPepper_381.jpg",
+    # Pineapple
+    "Database/aisingle_food_preprocess_0503/6_Fruit/H_Fruits/H1_FreshFruits/Pineapple/Pineapple_90.jpg",
+    "Database/aisingle_food_preprocess_0503/6_Fruit/H_Fruits/H1_FreshFruits/Pineapple/Pineapple_339.jpg",
+    "Database/aisingle_food_preprocess_0503/6_Fruit/H_Fruits/H1_FreshFruits/Pineapple/Pineapple_111.jpg",
+    # Shiitake
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G6_Mushrooms/ShiitakeMushrooms/ShiitakeMushrooms_104.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G6_Mushrooms/ShiitakeMushrooms/ShiitakeMushrooms_169.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G6_Mushrooms/ShiitakeMushrooms/ShiitakeMushrooms_26.jpg",
+    # Onion
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G2_LightGreenVegetables/Onions/Onions_65.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G2_LightGreenVegetables/Onions/Onions_57.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G2_LightGreenVegetables/Onions/Onions_145.jpg",
+    # Agaric
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G6_Mushrooms/Agaric/Agaric_86.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G6_Mushrooms/Agaric/Agaric_186.jpg",
+    "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G6_Mushrooms/Agaric/Agaric_99.jpg",
+    # CherryTomato
+    "Database/aisingle_food_preprocess_0503/6_Fruit/H_Fruits/H1_FreshFruits/CherryTomato/CherryTomato_127.jpg",
+    "Database/aisingle_food_preprocess_0503/6_Fruit/H_Fruits/H1_FreshFruits/CherryTomato/CherryTomato_33.jpg",
+    "Database/aisingle_food_preprocess_0503/6_Fruit/H_Fruits/H1_FreshFruits/CherryTomato/CherryTomato_594.jpg"
+]
+VAL_LABEL_200 = [[84], [84], [84], [46], [46], [46], [58], [58], [58], [41, 58], [41], [41], [16], [16], [16], [80], [80], [80], [44], [44], [44], [82], [82], [82], [21], [21], [21]]
+VAL_LABEL_100 = [[84], [84], [84], [46], [46], [46], [58], [58], [58], [41], [41, 58], [41], [16], [16], [16], [80], [80], [80], [44], [44], [44], [82], [82], [82], [21], [21], [21]]
+VAL_LABEL_300 = [[84], [84], [84], [46], [46], [46], [58], [58], [58], [41, 10], [41], [41], [16], [16], [16], [80], [80], [80], [44], [44], [44], [82], [82], [82], [21], [21], [21]]
+
+##### #####
 
 class Trainer():
     '''
@@ -101,22 +228,56 @@ class Trainer():
         
         ##### DEBUG #####
         
-        self.log_loss = True
-        self.loss_logger = logging.getLogger("loss")
-        self.loss_file = open(os.path.join(cfg["SAVE_DIR"], "logs", sub_dir, "loss.csv"), "w")
-        loss_hander = logging.StreamHandler(self.loss_file)
-        self.loss_logger.addHandler(loss_hander)
-        self.loss_logger.setLevel(logging.DEBUG)
-        if self.log_loss :
+        console.print(f"Log Debug: {LOG_DEBUG}")
+        
+        if LOG_DEBUG :
+            # Log loss
+            self.loss_logger = logging.getLogger("loss")
+            self.loss_file = open(os.path.join(cfg["SAVE_DIR"], "logs", sub_dir, "loss.csv"), "w")
+            loss_hander = logging.StreamHandler(self.loss_file)
+            self.loss_logger.addHandler(loss_hander)
+            self.loss_logger.setLevel(logging.DEBUG)
             self.loss_logger.info("CLS, SSC, CPM, Total")
-        
-        self.log_cls = True
-        self.cls_logger = logging.getLogger("cls_loss")
-        self.cls_file = open(os.path.join(cfg["SAVE_DIR"], "logs", sub_dir, "cls_loss.csv"), "w")
-        cls_hander = logging.StreamHandler(self.cls_file)
-        self.cls_logger.addHandler(cls_hander)
-        self.cls_logger.setLevel(logging.DEBUG)
-        
+            
+            # Log CLS loss of each class
+            self.cls_logger = logging.getLogger("cls_loss")
+            self.cls_file = open(os.path.join(cfg["SAVE_DIR"], "logs", sub_dir, "cls_loss.csv"), "w")
+            cls_hander = logging.StreamHandler(self.cls_file)
+            self.cls_logger.addHandler(cls_hander)
+            self.cls_logger.setLevel(logging.DEBUG)
+            
+            # Log test images
+            if self.cfg["SEED"] == 100 :
+                self.valid_images = VAL_IMGS_100
+                self.valid_labels = VAL_LABEL_100
+            elif self.cfg["SEED"] == 200 :
+                self.valid_images = VAL_IMGS_200
+                self.valid_labels = VAL_LABEL_200
+            elif self.cfg["SEED"] == 300 :
+                self.valid_images = VAL_IMGS_300
+                self.valid_labels = VAL_LABEL_300
+            else :
+                self.valid_images = VAL_IMGS_100 # Default
+            self.img_pred_loggers = []
+            self.img_loss_loggers = []
+            self.img_pred_files = []
+            self.img_loss_files = []
+            for i, img_path in enumerate(self.valid_images) :
+                # Loggers
+                pred_logger = logging.getLogger(f"img_{i}_pred")
+                loss_logger = logging.getLogger(f"img_{i}_loss")
+                self.img_pred_loggers.append(pred_logger)
+                self.img_loss_loggers.append(loss_logger)
+                # Files
+                pred_file = open(os.path.join(cfg["SAVE_DIR"], "logs", sub_dir, f"img_{os.path.basename(img_path)}_pred.csv"), "w")
+                loss_file = open(os.path.join(cfg["SAVE_DIR"], "logs", sub_dir, f"img_{os.path.basename(img_path)}_loss.csv"), "w")
+                # Handler
+                pred_logger.addHandler(logging.StreamHandler(pred_file))
+                loss_logger.addHandler(logging.StreamHandler(loss_file))
+                # Level
+                pred_logger.setLevel(logging.DEBUG)
+                loss_logger.setLevel(logging.DEBUG)
+                
         ##### DEBUG #####
     
     def train(
@@ -193,15 +354,21 @@ class Trainer():
             if self.sam is not None :
                 self.sam.to(self.device)
                 self.sam.eval()
+            
+            # Progress bar
+            if self.is_main :
+                self.train_dataloader_bar = tqdm(
+                    enumerate(self.train_dataloader),
+                    desc=f"GPU[{self.gpu_id}]: Epoch {epoch}/{start_epoch}-{end_epoch-1}",
+                    # position=self.gpu_id,
+                    leave=True,
+                    total=total
+                )
+            else :
+                self.train_dataloader_bar = enumerate(self.train_dataloader)
 
             self.model.train() # Training mode
-            for idx, (img, label, sam_img) in tqdm(
-                enumerate(self.train_dataloader),
-                desc=f"GPU[{self.gpu_id}]: Epoch {epoch}/{start_epoch}-{end_epoch-1}",
-                # position=self.gpu_id,
-                leave=True,
-                total=total
-            ):
+            for idx, (img, label, sam_img) in self.train_dataloader_bar :
                 
                 self.model.train()
                 self.opt.zero_grad()
@@ -217,7 +384,7 @@ class Trainer():
                 #? focal loss implicitly applies sigmoid
                 loss_cls = cal_class_focal_loss(out, label, class_alpha, gamma, mean=False)
                 
-                if self.log_cls :
+                if self.is_main and LOG_DEBUG and idx % 100 == 0 :
                     self.cls_logger.debug(",".join(str(item) for item in loss_cls.mean(dim=0).tolist()))
                 
                 loss_cls = loss_cls.mean()
@@ -240,10 +407,16 @@ class Trainer():
                         img.shape,
                         label,
                         cam_ms,
-                        size_sam = 512,
+                        size_sam = 1024,
                         threshold = 0.2,
                     )
-                    pgt_sam = self._aggregate_sam_cam(img, cam_ms, max_points, size_sam=512, mask_select=2) # [B, H, W]
+                    pgt_sam = self._aggregate_sam_cam(
+                        img,
+                        cam_ms,
+                        max_points,
+                        size_sam=1024,
+                        mask_select=2
+                    ) # [B, H, W]
                     
                     self.model.train()
                     
@@ -267,7 +440,7 @@ class Trainer():
                 # Total loss
                 loss = loss_cls + loss_ssc + loss_cpm
                 
-                if self.log_loss and self.is_main :
+                if LOG_DEBUG and self.is_main and idx % 100 == 0 :
                     self.loss_logger.debug(f"{loss_cls.item()},{loss_ssc.item()},{loss_cpm.item()},{loss.item()}")
 
                 # Back propagation
@@ -320,6 +493,29 @@ class Trainer():
                     gamma=gamma
                 )
                 record_dict.update(valid_results)
+            
+            # Evaluate test images
+            if LOG_DEBUG :
+                valid_trfs = transforms.Compose([
+                    transforms.ToTensor(),
+                    transforms.Resize((256, 256)),
+                    transforms.CenterCrop(224),
+                    transforms.Normalize(mean=[0.522, 0.475, 0.408], std=[0.118, 0.115, 0.117])
+                ])
+                
+                for pred_logger, loss_logger, img_path, img_label in zip(self.img_pred_loggers, self.img_loss_loggers, self.valid_images, self.valid_labels) :
+                    img = Image.open(os.path.join(cfg["ROOT"], img_path)).convert("RGB")
+                    img = valid_trfs(img).unsqueeze(0).to(self.device)
+                    result = self.model(img)["pred"]
+                    label_tensor = torch.zeros(1, self.class_num).to(self.device).to(torch.float32)
+                    # print(img_label)
+                    # print(label_tensor.shape)
+                    label_tensor[0, img_label] = 1
+                    img_loss = cal_class_focal_loss(result, label_tensor, class_alpha, gamma, mean=False)
+                    
+                    img_loss_mean = img_loss.mean().item()
+                    pred_logger.debug(",".join(str(item) for item in torch.sigmoid(result).tolist()[0]))
+                    loss_logger.debug(",".join(str(item) for item in img_loss.tolist()[0] + [img_loss_mean]))
             
             # Save metrics and checkpoint of the epoch
             # Only record on the main process
@@ -603,8 +799,14 @@ class Trainer():
     def __del__(self) :
         self.writer.flush()
         self.writer.close()
-        self.cls_file.close()
-        self.loss_file.close()
+        if LOG_DEBUG :
+            self.cls_file.close()
+            self.loss_file.close()
+            for f in self.img_loss_files :
+                f.close()
+            for f in self.img_pred_files :
+                f.close()
+
 
 if __name__ == "__main__" :
     import time
