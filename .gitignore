@@ -12,6 +12,7 @@
 *.npz
 Pipfile*
 compress.py
+temp
 
 s2c/
 Results/

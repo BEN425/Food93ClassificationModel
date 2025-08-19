@@ -6,6 +6,7 @@ After each epoch, the model checkpoint and evaluation results are saved in `Resu
 '''
 
 import os
+import json
 import datetime
 import logging
 import pprint
@@ -20,6 +21,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torch.types
+import torch.distributed as dist
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
 from torch.utils.tensorboard import SummaryWriter
@@ -29,7 +31,7 @@ from rich.progress import track
 from ema_pytorch import EMA
 
 from loss import cal_class_focal_loss, cal_ssc_loss, select_best_sam_mask_by_cam_overlap, denorm, calc_cpm_loss
-from metrics import cal_f1_score_acc, cal_tp_fp_fn_tn, cal_error_nums, evaluate_dataset
+from metrics import cal_f1_score_acc, cal_tp_fp_fn_tn, cal_error_nums, evaluate_dataset, evaluate_dataset_ddp, evaluate_dataset_class_acc
 
 from rich import get_console
 console = get_console()
@@ -37,7 +39,7 @@ console = get_console()
 
 ##### DEBUG #####
 
-LOG_DEBUG = True
+LOG_DEBUG = False
 VAL_IMGS_200 = [
     # Bunashimeji
     "Database/aisingle_food_preprocess_0503/5_Vegetable/G_Vegetables/G6_Mushrooms/Bunashimeji/Bunashimeji_95.jpg",
@@ -177,7 +179,7 @@ class Trainer():
     
     def __init__(
         self,
-        dataset: "dict[str, DataLoader]",
+        dataloaders: "dict[str, DataLoader]",
         model: nn.Module,
         opt: torch.optim.Optimizer,
         device: torch.types.Device,
@@ -187,8 +189,8 @@ class Trainer():
         using_ddp: bool = False,
     ):
         
-        self.train_dataloader = dataset["train"]
-        self.valid_dataloader = dataset["valid"]
+        self.train_dataloader = dataloaders["train"]
+        self.valid_dataloader = dataloaders["valid"]
         self.class_num: int = cfg["MODEL"]["CATEGORY_NUM"]
         self.model = model
         self.sam = sam
@@ -230,10 +232,13 @@ class Trainer():
         
         console.print(f"Log Debug: {LOG_DEBUG}")
         
-        if LOG_DEBUG :
+        if self.is_main and LOG_DEBUG :
             # Log loss
             self.loss_logger = logging.getLogger("loss")
-            self.loss_file = open(os.path.join(cfg["SAVE_DIR"], "logs", sub_dir, "loss.csv"), "w")
+            self.loss_file = open(
+                os.path.join(cfg["SAVE_DIR"], "logs", sub_dir, "loss.csv"),
+                "a" if self.cfg["RESUME"] else "w"
+            )
             loss_hander = logging.StreamHandler(self.loss_file)
             self.loss_logger.addHandler(loss_hander)
             self.loss_logger.setLevel(logging.DEBUG)
@@ -241,7 +246,10 @@ class Trainer():
             
             # Log CLS loss of each class
             self.cls_logger = logging.getLogger("cls_loss")
-            self.cls_file = open(os.path.join(cfg["SAVE_DIR"], "logs", sub_dir, "cls_loss.csv"), "w")
+            self.cls_file = open(
+                os.path.join(cfg["SAVE_DIR"], "logs", sub_dir, "cls_loss.csv"),
+                "a" if self.cfg["RESUME"] else "w"
+            )
             cls_hander = logging.StreamHandler(self.cls_file)
             self.cls_logger.addHandler(cls_hander)
             self.cls_logger.setLevel(logging.DEBUG)
@@ -269,8 +277,14 @@ class Trainer():
                 self.img_pred_loggers.append(pred_logger)
                 self.img_loss_loggers.append(loss_logger)
                 # Files
-                pred_file = open(os.path.join(cfg["SAVE_DIR"], "logs", sub_dir, f"img_{os.path.basename(img_path)}_pred.csv"), "w")
-                loss_file = open(os.path.join(cfg["SAVE_DIR"], "logs", sub_dir, f"img_{os.path.basename(img_path)}_loss.csv"), "w")
+                pred_file = open(
+                    os.path.join(cfg["SAVE_DIR"], "logs", sub_dir, f"img_{os.path.basename(img_path)}_pred.csv"),
+                    "a" if self.cfg["RESUME"] else "w"
+                )
+                loss_file = open(
+                    os.path.join(cfg["SAVE_DIR"], "logs", sub_dir, f"img_{os.path.basename(img_path)}_loss.csv"),
+                    "a" if cfg["RESUME"] else "w"
+                )
                 # Handler
                 pred_logger.addHandler(logging.StreamHandler(pred_file))
                 loss_logger.addHandler(logging.StreamHandler(loss_file))
@@ -306,9 +320,9 @@ class Trainer():
         '''
         
         
-        # Calculate progress bar
         batch_size = cfg["BATCH_SIZE"]
-        total = len(self.train_dataloader.dataset) // batch_size
+        total = len(self.train_dataloader)
+        world_size = dist.get_world_size() if self.using_ddp else 1
         
         if self.logger is not None and self.is_main :
             self.logger.info(f"Batch size: {batch_size}; Epoch steps: {total}")
@@ -317,9 +331,10 @@ class Trainer():
         record_epoch = []
         
         for epoch in range(start_epoch, end_epoch):
-            # console.print( "====================")
-            # console.print(f"{f'Epoch {epoch}/{start_epoch}-{end_epoch-1}':^20}")
-            # console.print( "====================")
+            if self.is_main :
+                console.print( "====================")
+                console.print(f"{f'Epoch {epoch}/{start_epoch}-{end_epoch-1}':^20}")
+                console.print( "====================")
 
             if self.using_ddp :
                 self.train_dataloader.sampler.set_epoch(epoch)
@@ -344,10 +359,10 @@ class Trainer():
             fn = torch.zeros(self.class_num).to(self.device)
             tn = torch.zeros(self.class_num).to(self.device)
             # For calculating Hamming acc and Zero acc
-            err_label = 0
-            err_data  = 0
-            label_count = 0
-            data_count  = 0
+            err_label   = torch.tensor(0).to(self.device)
+            err_data    = torch.tensor(0).to(self.device)
+            label_count = torch.tensor(0).to(self.device)
+            data_count  = torch.tensor(0).to(self.device)
             
             self.model.to(self.device)
             self.ema.to(self.device)
@@ -366,8 +381,11 @@ class Trainer():
                 )
             else :
                 self.train_dataloader_bar = enumerate(self.train_dataloader)
+            
+            # Training mode
+            self.model.to(self.device)
+            self.model.train()
 
-            self.model.train() # Training mode
             for idx, (img, label, sam_img) in self.train_dataloader_bar :
                 
                 self.model.train()
@@ -386,6 +404,7 @@ class Trainer():
                 
                 if self.is_main and LOG_DEBUG and idx % 100 == 0 :
                     self.cls_logger.debug(",".join(str(item) for item in loss_cls.mean(dim=0).tolist()))
+                if self.using_ddp : dist.barrier()
                 
                 loss_cls = loss_cls.mean()
                 
@@ -440,11 +459,13 @@ class Trainer():
                 # Total loss
                 loss = loss_cls + loss_ssc + loss_cpm
                 
+                if self.using_ddp : dist.barrier()
                 if LOG_DEBUG and self.is_main and idx % 100 == 0 :
                     self.loss_logger.debug(f"{loss_cls.item()},{loss_ssc.item()},{loss_cpm.item()},{loss.item()}")
+                if self.using_ddp : dist.barrier()
 
                 # Back propagation
-                loss.backward(retain_graph=True)
+                loss.backward(retain_graph=False)
                 self.opt.step()
                 self.ema.update()
                 
@@ -455,78 +476,129 @@ class Trainer():
                 data_count += len(label)
 
                 # Record each iter loss
-                record_dict["train_cls_loss"]   += loss_cls.item()
-                record_dict["train_cpm_loss"]   += loss_cpm.item()
-                record_dict["train_ssc_loss"]   += loss_ssc.item()
-                record_dict["train_total_loss"] += loss.item()
+                record_dict["train_cls_loss"]   += loss_cls
+                record_dict["train_cpm_loss"]   += loss_cpm
+                record_dict["train_ssc_loss"]   += loss_ssc
+                record_dict["train_total_loss"] += loss
                 tp += tp_fp_fn_tn[0]
                 fp += tp_fp_fn_tn[1]
                 fn += tp_fp_fn_tn[2]
                 tn += tp_fp_fn_tn[3]
                 err_label += train_err_cor[0]
                 err_data  += train_err_cor[1]
+                
+                if self.using_ddp : dist.barrier()
+                
+            # Aggregate loss and metrics
+            if self.using_ddp :
+                # Loss
+                dist.all_reduce(record_dict["train_cls_loss"],   op=dist.ReduceOp.SUM)
+                dist.all_reduce(record_dict["train_cpm_loss"],   op=dist.ReduceOp.SUM)
+                dist.all_reduce(record_dict["train_ssc_loss"],   op=dist.ReduceOp.SUM)
+                dist.all_reduce(record_dict["train_total_loss"], op=dist.ReduceOp.SUM)
+                
+                record_dict["train_cls_loss"]   = record_dict["train_cls_loss"].item()   / total / world_size
+                record_dict["train_cpm_loss"]   = record_dict["train_cpm_loss"].item()   / total / world_size
+                record_dict["train_ssc_loss"]   = record_dict["train_ssc_loss"].item()   / total / world_size
+                record_dict["train_total_loss"] = record_dict["train_total_loss"].item() / total / world_size
+                
+                # Metrics
+                # Stack all metric components into a single tensor for efficient reduction
+                metrics_tensor = torch.stack([tp, fp, fn, tn])
+                counts_tensor = torch.stack([err_label, err_data, label_count, data_count])
+                dist.all_reduce(metrics_tensor, op=dist.ReduceOp.SUM)
+                dist.all_reduce(counts_tensor, op=dist.ReduceOp.SUM)
+                tp, fp, fn, tn = metrics_tensor
+                err_label, err_data, label_count, data_count = counts_tensor
+
+                train_metrics_results = cal_f1_score_acc(tp, fp, fn, tn)
+                record_dict["train_microf1"]   = train_metrics_results["microf1"].item()
+                record_dict["train_macrof1"]   = train_metrics_results["macrof1"].item()
+                record_dict["train_micro_acc"] = train_metrics_results["micro_acc"].item()
+                record_dict["train_ham_loss"]  = (err_label / label_count).item()
+                record_dict["train_zero_acc"]  = (1 - err_data / data_count).item()
+            else :
+                # Loss
+                record_dict["train_cls_loss"] = record_dict["train_cls_loss"].item()     / total
+                record_dict["train_cpm_loss"] = record_dict["train_cpm_loss"].item()     / total
+                record_dict["train_ssc_loss"] = record_dict["train_ssc_loss"].item()     / total
+                record_dict["train_total_loss"] = record_dict["train_total_loss"].item() / total
     
-            # Record each epoch loss
-            train_metrics_results = cal_f1_score_acc(tp, fp, fn, tn)
-            #? Use `float` to ensure all values are scalar
-            record_dict["train_microf1"]     = float(train_metrics_results["microf1"])
-            record_dict["train_macrof1"]     = float(train_metrics_results["macrof1"])
-            record_dict["train_micro_acc"]   = float(train_metrics_results["micro_acc"])
-            record_dict["train_ham_loss"]    = float(err_label / label_count)
-            record_dict["train_zero_acc"]    = float(1 - err_data / data_count)
-            record_dict["train_total_loss"] /= len(self.train_dataloader)
-            record_dict["train_cls_loss"]   /= len(self.train_dataloader)
-            record_dict["train_ssc_loss"]   /= len(self.train_dataloader)
-            record_dict["train_cpm_loss"]   /= len(self.train_dataloader)
+                # Metrics
+                train_metrics_results = cal_f1_score_acc(tp, fp, fn, tn)
+                record_dict["train_microf1"]   = train_metrics_results["microf1"].item()
+                record_dict["train_macrof1"]   = train_metrics_results["macrof1"].item()
+                record_dict["train_micro_acc"] = train_metrics_results["micro_acc"].item()
+                record_dict["train_ham_loss"]  = (err_label / label_count).item()
+                record_dict["train_zero_acc"]  = (1 - err_data / data_count).item()
             
             # Evaluate on validation set
 
+            if self.using_ddp : dist.barrier()
             if cfg["TEST_METRICS"] :
                 if self.logger is not None and self.is_main :
                     self.logger.info("Evaluating on validation set...")
-                valid_results = evaluate_dataset(
-                    self.model,
-                    self.valid_dataloader,
-                    self.class_num,
-                    self.device,
-                    class_alpha=class_alpha,
-                    gamma=gamma
-                )
+                
+                if self.using_ddp :
+                    valid_results = evaluate_dataset_ddp(
+                        model=self.model,
+                        dataloader=self.valid_dataloader,
+                        cate_num=self.class_num,
+                        device=self.device,
+                        class_alpha=class_alpha,
+                        gamma=gamma
+                    )
+                else :
+                    valid_results = evaluate_dataset_class_acc(
+                        model=self.model,
+                        dataloader=self.valid_dataloader,
+                        cate_num=self.class_num,
+                        device=self.device,
+                        class_alpha=class_alpha,
+                        gamma=gamma
+                    )
                 record_dict.update(valid_results)
             
             # Evaluate test images
-            if LOG_DEBUG :
-                valid_trfs = transforms.Compose([
-                    transforms.ToTensor(),
-                    transforms.Resize((256, 256)),
-                    transforms.CenterCrop(224),
-                    transforms.Normalize(mean=[0.522, 0.475, 0.408], std=[0.118, 0.115, 0.117])
-                ])
-                
-                for pred_logger, loss_logger, img_path, img_label in zip(self.img_pred_loggers, self.img_loss_loggers, self.valid_images, self.valid_labels) :
-                    img = Image.open(os.path.join(cfg["ROOT"], img_path)).convert("RGB")
-                    img = valid_trfs(img).unsqueeze(0).to(self.device)
-                    result = self.model(img)["pred"]
-                    label_tensor = torch.zeros(1, self.class_num).to(self.device).to(torch.float32)
-                    # print(img_label)
-                    # print(label_tensor.shape)
-                    label_tensor[0, img_label] = 1
-                    img_loss = cal_class_focal_loss(result, label_tensor, class_alpha, gamma, mean=False)
+            if self.using_ddp : dist.barrier()
+            if self.is_main and LOG_DEBUG :
+                with torch.no_grad() :
+                    valid_trfs = transforms.Compose([
+                        transforms.ToTensor(),
+                        transforms.Resize((256, 256)),
+                        transforms.CenterCrop(224),
+                        transforms.Normalize(mean=[0.522, 0.475, 0.408], std=[0.118, 0.115, 0.117])
+                    ])
                     
-                    img_loss_mean = img_loss.mean().item()
-                    pred_logger.debug(",".join(str(item) for item in torch.sigmoid(result).tolist()[0]))
-                    loss_logger.debug(",".join(str(item) for item in img_loss.tolist()[0] + [img_loss_mean]))
+                    for pred_logger, loss_logger, img_path, img_label in zip(self.img_pred_loggers, self.img_loss_loggers, self.valid_images, self.valid_labels) :
+                        img = Image.open(os.path.join(cfg["ROOT"], img_path)).convert("RGB")
+                        img = valid_trfs(img).unsqueeze(0).to(self.device)
+                        result = self.model(img)["pred"]
+                        label_tensor = torch.zeros(1, self.class_num).to(self.device).to(torch.float32)
+                        # print(img_label)
+                        # print(label_tensor.shape)
+                        label_tensor[0, img_label] = 1
+                        img_loss = cal_class_focal_loss(result, label_tensor, class_alpha, gamma, mean=False)
+                        
+                        img_loss_mean = img_loss.mean().item()
+                        pred_logger.debug(",".join(str(item) for item in torch.sigmoid(result).tolist()[0]))
+                        loss_logger.debug(",".join(str(item) for item in img_loss.tolist()[0] + [img_loss_mean]))
+            
+            if self.using_ddp : dist.barrier()
+            
+            record_dict["epoch"] = epoch
+            record_epoch.append(record_dict)
             
             # Save metrics and checkpoint of the epoch
             # Only record on the main process
-            record_dict["epoch"] = epoch
             if self.is_main :
                 self._monitor(record_dict, epoch)
+                self._save_results(record_epoch)
                 self._save_checkpoint(record_dict, epoch)
                 if self.logger is not None :
                     self.logger.info(f"Epoch {epoch}:\n{pprint.pformat(record_dict)}")
             
-            record_epoch.append(record_dict)
+            if self.using_ddp : dist.barrier()
 
         # Close writer
         self.writer.flush()
@@ -778,28 +850,42 @@ class Trainer():
 
     def _monitor(self, record_dict: "dict[str, float]", epoch: int):
         for key, value in record_dict.items():
-            self.writer.add_scalar(key, value, epoch)
+            if isinstance(value, (int, float)) :
+                self.writer.add_scalar(key, value, epoch)
         console.print(record_dict)
+    
+    def _save_results(self, record_list: "list[dict]") :
+        result_path = os.path.join(self.cfg["SAVE_DIR"], "logs", self.cfg["SAVE_SUB_NAME"], "results.json")
+        json_write = {}
+        json_write["config"] = self.cfg
+        json_write["result"] = record_list
+        with open(result_path, "w") as file :
+            json.dump(json_write, file, indent=4, ensure_ascii=False)
+        
+        console.print(f"Saved results: \"{result_path}\"")
+        if self.logger is not None :
+            self.logger.info(f"Saved results: \"{result_path}\"")
     
     def _save_checkpoint(self, record_dict: "dict[str, float]", epoch: int):
         checkpoint_name = f"{self.save_model_name}_epoch_{epoch}.pth.tar"
         torch.save(
             {
                 "epoch": epoch,
-                "model": self.model.module.cpu().state_dict() if self.using_ddp else self.model.cpu().state_dict(),
-                "model_ema": self.ema.cpu().ema_model.state_dict(),
+                "model": self.model.module.state_dict() if self.using_ddp else self.model.state_dict(),
+                "model_ema": self.ema.ema_model.state_dict(),
                 "opt": self.opt.state_dict(),
                 "record_dict": record_dict,    
             },
             checkpoint_name
         )
         console.print(f"Saved checkpoint: \"{checkpoint_name}\"")
-        self.logger.info(f"Saved checkpoint: \"{checkpoint_name}\"")
+        if self.logger is not None :
+            self.logger.info(f"Saved checkpoint: \"{checkpoint_name}\"")
 
     def __del__(self) :
         self.writer.flush()
         self.writer.close()
-        if LOG_DEBUG :
+        if self.is_main and LOG_DEBUG :
             self.cls_file.close()
             self.loss_file.close()
             for f in self.img_loss_files :

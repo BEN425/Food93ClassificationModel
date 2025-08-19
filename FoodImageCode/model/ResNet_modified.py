@@ -111,9 +111,7 @@ def conv3x3(in_channels, out_channels, kernel, stride, dilation=False):
         return Conv2dSame(in_channels, out_channels, kernel, stride, bias=False)
 
 def batch_norm_2d(channels, momentum=1e-3, eps=1e-5):
-    return nn.SyncBatchNorm(channels, momentum=momentum, eps=eps) \
-        if dist.is_initialized() and dist.get_world_size() > 1 else \
-        nn.BatchNorm2d(channels, momentum=momentum, eps=eps)
+    return nn.BatchNorm2d(channels, momentum=momentum, eps=eps)
 
 class Bottleneck(nn.Module):
     def __init__(self, in_channels: int, out_channels: int, stride=1, dilate=False, use_cbam=False, use_se=False):

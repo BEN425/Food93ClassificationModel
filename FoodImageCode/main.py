@@ -12,9 +12,8 @@ import torchvision.transforms as transforms
 from torch.utils.data.distributed import DistributedSampler
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
-# import torch.multiprocessing as mp
 
-from dataset import FoodDataset, FoodDatasetWithMasks
+from dataset import FoodDataset, FoodDatasetWithMasks, TestDataset
 from training_loop import Trainer
 from model.ResNet_modified import ModifiedResNet
 from cfgparser import CfgParser
@@ -37,6 +36,8 @@ def main(cfg: dict) :
         logger.info("Initializing...")
         console.print("Initializing...")
         results = None
+        
+        init_seed(cfg["SEED"])
 
         # Setup DDP
         world_size = int(os.environ.get("WORLD_SIZE", 1)) 
@@ -50,15 +51,13 @@ def main(cfg: dict) :
             rank = 0
             device = torch.device(f"cuda:{cfg['GPU_ID']}")
         
-        init_seed(cfg["SEED"])
-        
-        logger.info(f"world_size = {world_size}; ddp = {using_ddp}; rank = {rank}; device = {device}; seed = {cfg['SEED']}")
+        logger.info(f"world_size = {world_size}; ddp = {using_ddp}; device = {device}; seed = {cfg['SEED']}")
         
         ##### Load dataset #####
         
         logger.info("Loading dataset...")
         console.print("Loading dataset...")
-        dataset = load_dataset(cfg, using_ddp, rank)
+        dataloaders = load_dataset(cfg, using_ddp, rank)
         
         ##### Load model #####
         
@@ -67,11 +66,8 @@ def main(cfg: dict) :
         
         # Load classification model
         model = load_model(cfg)
-        model = model.to(device)
         start_epoch, end_epoch = 0, cfg["EPOCHS"]
-        if using_ddp :
-            ddp_model = DDP(model, device_ids=[device], find_unused_parameters=True)
-
+        
         # Load SAM model
         if cfg["USE_CPM"] :
             console.print("Loading SAM model...")
@@ -110,14 +106,15 @@ def main(cfg: dict) :
 
         ##### Resume from checkpoint #####
         
+        if using_ddp : dist.barrier()
         if cfg["RESUME"] : 
             console.print("Resuming from checkpoint...")
 
-            checkpoint = torch.load(cfg["CHECKPOINT_PATH"])
-            if using_ddp :
-                ddp_model.module.load_state_dict(checkpoint["model"])
-            else :
-                model.load_state_dict(checkpoint["model"])
+            checkpoint = torch.load(
+                cfg["CHECKPOINT_PATH"],
+                map_location={"cuda:0": f"cuda:{device}"} if using_ddp else "cpu"
+            )
+            model.load_state_dict(checkpoint["model"])
             opt.load_state_dict(checkpoint["opt"])
             start_epoch += checkpoint["epoch"] + 1
             end_epoch += checkpoint["epoch"]
@@ -126,6 +123,13 @@ def main(cfg: dict) :
             logger.info(f"Resumed from \"{cfg['CHECKPOINT_PATH']}\": Epoch {start_epoch} to {end_epoch}")
         else :
             logger.info(f"Start training from epoch {start_epoch} to {end_epoch}")
+        model = model.to(device)
+        
+        ##### Wrap model with DDP #####
+        
+        if using_ddp :
+            model = nn.SyncBatchNorm.convert_sync_batchnorm(model)
+            model = DDP(model, find_unused_parameters=True)
         
         ##### Training #####
 
@@ -145,8 +149,8 @@ def main(cfg: dict) :
         logger.info("Setup trainer...")
         console.print("Training...")
         trainer = Trainer(
-            dataset = dataset,
-            model = ddp_model if using_ddp else model,
+            dataloaders = dataloaders,
+            model = model,
             opt = opt,
             device = device,
             cfg = cfg,
@@ -154,6 +158,7 @@ def main(cfg: dict) :
             using_ddp = using_ddp,
             logger=logger,
         )
+        
         logger.info("Start training...")
         results = trainer.train(
             start_epoch, end_epoch, cfg,
@@ -193,7 +198,12 @@ def init_seed(seed: int, cuda_deterministic=True) :
     torch.cuda.manual_seed_all(seed)
     torch.backends.cudnn.deterministic = cuda_deterministic
     torch.backends.cudnn.benchmark = not cuda_deterministic
-
+    torch.backends.cuda.matmul.allow_tf32 = False
+    torch.backends.cudnn.allow_tf32 = False
+    if os.environ.get("CUBLAS_WORKSPACE_CONFIG") is None:
+        os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+    torch.use_deterministic_algorithms(True)
+    
 # Initialization for DDP
 def ddp_setup() :
     #! Explicity specify addr and port might get error
@@ -201,12 +211,14 @@ def ddp_setup() :
     # os.environ["MASTER_ADDR"] = "localhost"
     # os.environ["MASTER_PORT"] = "12356"
 
+    import datetime
+
     # Initialize the process group
-    dist.init_process_group(backend="nccl", init_method="env://")
+    dist.init_process_group(backend="nccl", init_method="env://", timeout=datetime.timedelta(seconds=30))
     rank = int(os.environ["LOCAL_RANK"])
     torch.cuda.set_device(rank)
 
-# Load pretraind ResNet50 model
+# Load pretraind classification model
 def load_model(cfg: dict) -> nn.Module :
     
     # Load ResNet38
@@ -261,9 +273,7 @@ def load_model(cfg: dict) -> nn.Module :
 # Load SAM model
 def load_sam_model(cfg: dict) -> nn.Module :
     from segment_anything import sam_model_registry
-    sam_path = os.path.join(cfg["ROOT"], cfg["SAM_DIR"]) \
-        if cfg["ROOT"] is not None else cfg["SAM_DIR"]
-        
+
     sam_name = None
     model_names = ["vit_h", "vit_l", "vit_b"]
     for name in model_names :
@@ -274,7 +284,7 @@ def load_sam_model(cfg: dict) -> nn.Module :
     if sam_name is None :
         raise ValueError(f"SAM model name should be one of {model_names}")
     
-    return sam_model_registry[sam_name](checkpoint=sam_path)
+    return sam_model_registry[sam_name](checkpoint=cfg["SAM_DIR"])
 
 # Load class frequency and entropy for focal loss
 # Class frequency is loaded from "Database/class_freq.txt"
@@ -297,12 +307,18 @@ def load_class_entropy(cfg: dict) -> torch.Tensor :
     
     return cls_entropy * .99
 
+# Initialize random seed of dataloader
+def seed_worker(worker_id):
+    worker_seed = torch.initial_seed() % 2**32
+    np.random.seed(worker_seed)
+    random.seed(worker_seed)
+
 # Load datasets from csv file and apply preprocessing
 def load_dataset(cfg: dict, using_ddp: bool = False, rank: int = 0) -> "dict[str, DataLoader]":
     # Transforms
     train_trfs = transforms.Compose([
         transforms.ToTensor(),
-        transforms.Resize((256, 256)),
+        transforms.Resize((256, 256), antialias=True),
         transforms.CenterCrop(224),
         # Apply random transform to augment images
         
@@ -320,7 +336,7 @@ def load_dataset(cfg: dict, using_ddp: bool = False, rank: int = 0) -> "dict[str
     ])
     valid_trfs = transforms.Compose([
         transforms.ToTensor(),
-        transforms.Resize((256, 256)),
+        transforms.Resize((256, 256), antialias=True),
         transforms.CenterCrop(224),
         transforms.Normalize(mean=[0.522, 0.475, 0.408], std=[0.118, 0.115, 0.117])
     ])
@@ -331,8 +347,8 @@ def load_dataset(cfg: dict, using_ddp: bool = False, rank: int = 0) -> "dict[str
     # Load dataset and dataloader
 
     # Split batch to multiple GPUs
-    train_ba_size = cfg["BATCH_SIZE"]       // dist.get_world_size() if using_ddp else cfg["BATCH_SIZE"]
-    valid_ba_size = cfg["EVAL_BATCH_SIZE"]  // dist.get_world_size() if using_ddp else cfg["EVAL_BATCH_SIZE"]
+    train_ba_size = cfg["BATCH_SIZE"]      // dist.get_world_size() if using_ddp else cfg["BATCH_SIZE"]
+    valid_ba_size = cfg["EVAL_BATCH_SIZE"] // dist.get_world_size() if using_ddp else cfg["EVAL_BATCH_SIZE"]
 
     if cfg["USE_SSC"] :
         train_dataset = FoodDatasetWithMasks(cfg["TRAIN_CSV_DIR"], transform=train_trfs, hsv=False, root=cfg["ROOT"], sam_dir=cfg["SAM_MASK_DIR"])
@@ -345,21 +361,35 @@ def load_dataset(cfg: dict, using_ddp: bool = False, rank: int = 0) -> "dict[str
     train_sampler = DistributedSampler(train_dataset, seed=cfg["SEED"], rank=rank, shuffle=True)  if using_ddp else None
     valid_sampler = DistributedSampler(valid_dataset, seed=cfg["SEED"], rank=rank, shuffle=False) if using_ddp else None
 
+    # Create a generator for deterministic dataloading
+    g = torch.Generator()
+    g.manual_seed(cfg["SEED"])
+
     train_dataloader = DataLoader(
         train_dataset,
         batch_size=train_ba_size,
         drop_last=True,
-        shuffle=not using_ddp,
+        shuffle=not using_ddp, #? Sampler handles shuffling for DDP
         num_workers=cfg["WORKERS"],
-        sampler=train_sampler
+        sampler=train_sampler,
+        worker_init_fn=seed_worker,
+        generator=g
     )
     valid_dataloader = DataLoader(
         valid_dataset,
         batch_size=valid_ba_size,
         drop_last=True, shuffle=False,
         num_workers=cfg["WORKERS"],
-        sampler=valid_sampler
+        sampler=valid_sampler,
+        worker_init_fn=seed_worker,
+        generator=g
     )
+    
+    # for i, data in enumerate(train_dataloader) :
+    #     console.print(f"{i}: {data[0]}")
+    #     if i >= 5 : break
+    
+    # exit()
 
     dataset = {
         "train": train_dataloader,
@@ -367,6 +397,7 @@ def load_dataset(cfg: dict, using_ddp: bool = False, rank: int = 0) -> "dict[str
     }
 
     return dataset
+
 
 if __name__ == "__main__":
     import time
@@ -396,7 +427,10 @@ if __name__ == "__main__":
         #     raise Exception(f"Result folder \"{log_path}\" is not empty. Please change \"SAVE_SUB_NAME\" in config file or remove the results.")
         # Setup logger
         os.makedirs(log_path, exist_ok=True)
-        log_file = open(os.path.join(log_path, "record.log"), "w")
+        log_file = open(
+            os.path.join(log_path, "record.log"),
+            "a" if cfg["RESUME"] else "w"
+        )
         handler = logging.StreamHandler(log_file)
         formatter = logging.Formatter(
             "[%(levelname)-5s][%(asctime)s] (%(filename)s:%(lineno)d) %(message)s",
@@ -414,6 +448,8 @@ if __name__ == "__main__":
         shutil.copyfile(cfg["TRAIN_CSV_DIR"], os.path.join(log_path, os.path.basename(cfg["TRAIN_CSV_DIR"])))
         shutil.copyfile(cfg["VALID_CSV_DIR"], os.path.join(log_path, os.path.basename(cfg["VALID_CSV_DIR"])))
         shutil.copyfile(cfg["TEST_CSV_DIR"],  os.path.join(log_path, os.path.basename(cfg["TEST_CSV_DIR"])))
+        # Copy config file
+        shutil.copyfile(config_path, os.path.join(log_path, os.path.basename(config_path)))
         
         main(cfg)
     except Exception :

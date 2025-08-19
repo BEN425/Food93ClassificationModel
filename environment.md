@@ -3,10 +3,6 @@
 
 查看 GPU 狀態、CUDA 版本、正在使用 GPU 的程式等：`nvidia-smi`
 
-各映像檔的版本與環境可以參考：
-- https://man.twcc.ai/@twccdocs/ccs-concept-image-main-zh/%2F%40twccdocs%2Fccs-concept-image-pytorch-zh
-- https://docs.nvidia.com/deeplearning/frameworks/pytorch-release-notes/overview.html
-
 # 虛擬環境
 ## Pyenv
 
@@ -87,4 +83,12 @@ Conda 使用方式：
 
 ## TWCC
 
-TWCC 環境中 Pyenv 無法正常運作，請參考 __Conda__ 章節建立環境
+各映像檔的版本與環境可以參考：
+- https://man.twcc.ai/@twccdocs/ccs-concept-image-main-zh/%2F%40twccdocs%2Fccs-concept-image-pytorch-zh
+- https://docs.nvidia.com/deeplearning/frameworks/pytorch-release-notes/overview.html
+
+TWCC 環境中 Pyenv 無法正常運作，建立容器後參考 __Conda__ 章節建立環境
+
+建立容器：
+1. 建立開發容器，映像檔類型選擇 PyTorch
+2. 映像檔版本可以選擇最新的 pytorch-25.05，若要版本與工作站相近，可以選擇 pytorch-21.06

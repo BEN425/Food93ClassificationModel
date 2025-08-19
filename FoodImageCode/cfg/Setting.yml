@@ -1,12 +1,12 @@
 PARSER_SETTING:
-    # SEED: 200
-    SEED: 300
+    SEED: 200
+    # SEED: 300
     GPU_ID: "0"
     WORKERS: 4
-    EPOCHS: 30
+    EPOCHS: 15
     # EPOCHS: 1
-    BATCH_SIZE: 10
-    EVAL_BATCH_SIZE: 10
+    BATCH_SIZE: 16
+    EVAL_BATCH_SIZE: 16
 
 TRAIN_SETTING:
     ### Basic settings ###
@@ -28,7 +28,7 @@ TRAIN_SETTING:
     FOODSEG_DIR:     "Database/FoodSeg103"
     FOODSEG_CSV_DIR: "FoodImageCode/csv/FoodSeg103.csv"
     SAVE_DIR:        "FoodImageCode/Results"
-    SAVE_SUB_NAME:   "8_2_aisingle_test"
+    SAVE_SUB_NAME:   "8_14_aisingle_test"
 
     ### S2C ###
 

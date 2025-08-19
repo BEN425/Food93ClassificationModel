@@ -9,6 +9,7 @@ Defines a function to evaluate the model on dataset
 
 import torch
 import torch.nn as nn
+import torch.distributed as dist
 from torch.utils.data import DataLoader as Dataloader
 
 import numpy as np
@@ -20,7 +21,7 @@ from rich import get_console
 console = get_console()
 
 # Calculate TP, FP, FN and TN for a batch
-def cal_tp_fp_fn_tn(pred: torch.Tensor, label: torch.Tensor):
+def cal_tp_fp_fn_tn(pred: torch.Tensor, label: torch.Tensor) -> "tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]" :
     '''
     Calculate tp, fp, fn and tn for a batch of predictions and labels
     
@@ -30,7 +31,7 @@ def cal_tp_fp_fn_tn(pred: torch.Tensor, label: torch.Tensor):
         `pred` and `label` are both of dimenison `[batch_size, num_classes]`
 
     Return :
-        `tp`, `fp`, `fn`, `tn` of, of dimension `[num_classes]`
+        `tp`, `fp`, `fn`, `tn` of dimension `[num_classes]`
     '''
 
     tp = torch.sum((pred * label) != 0, dim=0)
@@ -45,7 +46,7 @@ def cal_f1_score_acc(
     tp: torch.Tensor, fp: torch.Tensor, fn: torch.Tensor, tn: torch.Tensor,
     alt_macrof1 = False,
     class_acc = False
-):
+) -> "dict[str, torch.Tensor]" :
     '''
     Calculate F1 score for a batch of predictions and labels
     F1 = 2 * prec * recall / (prec + recall)
@@ -78,12 +79,22 @@ def cal_f1_score_acc(
 
     # Micro F1
     
-    precision_micro = total_tp / (total_tp + total_fp) if (total_tp + total_fp) > 0 else 0
-    recall_micro    = total_tp / (total_tp + total_fn) if (total_tp + total_fn) > 0 else 0
-
-    microF1 = 2 * (precision_micro * recall_micro) / (precision_micro + recall_micro) \
-        if (precision_micro + recall_micro) > 0 else 0
-
+    precision_micro = torch.where(
+        condition = (total_tp + total_fp) > 0,
+        input = total_tp / (total_tp + total_fp),
+        other = torch.zeros_like(total_tp)
+    )
+    recall_micro = torch.where(
+        condition = (total_tp + total_fn) > 0,
+        input = total_tp / (total_tp + total_fn),
+        other = torch.zeros_like(total_tp)
+    )
+    
+    microF1 = torch.where(
+        condition = (precision_micro + recall_micro) > 0,
+        input = 2 * (precision_micro * recall_micro) / (precision_micro + recall_micro),
+        other = torch.zeros_like(recall_micro)
+    )
     # Macro F1
 
     precision_cls = torch.where(
@@ -106,9 +117,12 @@ def cal_f1_score_acc(
         other = torch.zeros_like(recall_cls)
     )
     
-    macroF1_alt = 2 * (precision_ma * recall_ma) / (precision_ma + recall_ma) \
-        if (precision_ma + recall_ma) > 0 else 0
-    macroF1 = f1_cls.mean().item()
+    macroF1_alt = torch.where(
+        condition = (precision_ma + recall_ma) > 0,
+        input = 2 * (precision_ma * recall_ma) / (precision_ma + recall_ma),
+        other = torch.zeros_like(recall_ma)
+    )
+    macroF1 = f1_cls.mean()
 
     metrics = {
         "microf1": microF1,
@@ -125,7 +139,7 @@ def cal_f1_score_acc(
 # Calculate hamming accuracy and zero accuracy for a batch
 #? Not used in training
 @torch.no_grad()
-def cal_ham_zero_acc(pred: torch.Tensor, label: torch.Tensor):
+def cal_ham_zero_acc(pred: torch.Tensor, label: torch.Tensor) -> "dict[str, torch.Tensor]" :
     '''
     Calculate hamming loss and zero accuracy for a batch of predictions and labels
     
@@ -152,7 +166,7 @@ def cal_ham_zero_acc(pred: torch.Tensor, label: torch.Tensor):
 
 # Calculate numbers of error predictions
 @torch.no_grad()
-def cal_error_nums(pred: torch.Tensor, label: torch.Tensor) :
+def cal_error_nums(pred: torch.Tensor, label: torch.Tensor) -> "tuple[torch.Tensor, torch.Tensor]" :
     '''
     A helper function to calculate numbers of error prediction in a batch.
     Return values are used for hamming loss and zero accuracy after the entire dataset is evaluated.
@@ -168,8 +182,8 @@ def cal_error_nums(pred: torch.Tensor, label: torch.Tensor) :
     '''
 
     err_batch = (pred != label).sum(dim=1)
-    err_label = err_batch.sum().item()
-    err_data  = err_batch.count_nonzero().item()
+    err_label = err_batch.sum()
+    err_data  = err_batch.count_nonzero()
     return err_label, err_data
 
 # Calclate acccuracy for single label
@@ -253,11 +267,11 @@ def evaluate_dataset(
     # Record loss and metrics
     valid_metrics_results = cal_f1_score_acc(tp, fp, fn, tn)
     #? Use `float` to ensure all values are not Tensor
-    record_dict["valid_microf1"]     = float(valid_metrics_results["microf1"])
-    record_dict["valid_macrof1"]     = float(valid_metrics_results["macrof1"])
-    record_dict["valid_micro_acc"]   = float(valid_metrics_results["micro_acc"])
-    record_dict["valid_ham_loss"]    = float(err_label / label_count)
-    record_dict["valid_zero_acc"]    = float(1 - err_data / data_count)
+    record_dict["valid_microf1"]     = valid_metrics_results["microf1"].item()
+    record_dict["valid_macrof1"]     = valid_metrics_results["macrof1"].item()
+    record_dict["valid_micro_acc"]   = valid_metrics_results["micro_acc"].item()
+    record_dict["valid_ham_loss"]    = (err_label / label_count).item()
+    record_dict["valid_zero_acc"]    = (1 - err_data / data_count).item()
     record_dict["valid_total_loss"] /= len(dataloader)
 
     return record_dict
@@ -271,7 +285,7 @@ def evaluate_dataset_class_acc(
     device,
     class_alpha: torch.Tensor = None,
     gamma: float = 2,
-    to_list = False
+    # to_list = False
 ) -> "dict[str, float]" :
     '''
     Evaluate model on a dataset
@@ -298,11 +312,13 @@ def evaluate_dataset_class_acc(
         "valid_class_f1"        : None,
         "valid_class_precision" : None,
         "valid_class_recall"    : None,
+        "valid_class_loss1"     : None,
+        "valid_class_loss2"     : None,
         "tp"                    : None,
         "fp"                    : None,
         "fn"                    : None,
         "tn"                    : None,
-        "conf_matrix"           : None,
+        # "conf_matrix"           : None,
     }
 
     # TP, TN, FN, FP of each class, for calculating Macro F1
@@ -310,12 +326,15 @@ def evaluate_dataset_class_acc(
     fp = torch.zeros(cate_num, dtype=torch.int).to(device)
     fn = torch.zeros(cate_num, dtype=torch.int).to(device)
     tn = torch.zeros(cate_num, dtype=torch.int).to(device)
-    conf_matrix = torch.zeros((cate_num, cate_num), dtype=torch.int).to(device)
+    # conf_matrix = torch.zeros((cate_num, cate_num), dtype=torch.int).to(device)
     # For calculating Hamming acc and Zero acc
     err_label = 0
     err_data = 0
     label_count = 0
     data_count = 0
+    # Loss of each class
+    cls_loss  = torch.zeros(cate_num).to(device)
+    cls_count = torch.zeros(cate_num, dtype=torch.int).to(device)
 
     model.eval() # Evaluation mode
     for idx, (img, label, _) in enumerate(dataloader):
@@ -327,7 +346,10 @@ def evaluate_dataset_class_acc(
         pred = torch.round(logits) # Threshold = 0.5
         
         # Loss
-        loss = cal_class_focal_loss(out, label, class_alpha, gamma)
+        loss = cal_class_focal_loss(out, label, class_alpha, gamma, mean=False)
+        cls_loss += torch.masked_fill(loss, ~label.bool(), 0).sum(0)
+        cls_count += label.bool().sum(0)
+        loss = loss.mean()
 
         # Metrics
         tp_fp_fn_tn = cal_tp_fp_fn_tn(pred, label)
@@ -344,40 +366,168 @@ def evaluate_dataset_class_acc(
         err_data  += valid_err_cor[1]
 
         # Confusion Matrix
-        for l, p in zip(label, pred) :
-            cls_ids = l.nonzero().long()
-            for id in cls_ids :
-                p_ = p.clone().int()
-                p_[ cls_ids[id != cls_ids] ] = 0
-                conf_matrix[id] += p_
+        # for l, p in zip(label, pred) :
+        #     cls_ids = l.nonzero().long()
+        #     for id in cls_ids :
+        #         p_ = p.clone().int()
+        #         p_[ cls_ids[id != cls_ids] ] = 0
+        #         conf_matrix[id] += p_
 
     # Record loss and metrics
     valid_metrics_results = cal_f1_score_acc(tp, fp, fn, tn, class_acc=True)
     #? Use `float` to ensure all values are not Tensor
-    record_dict["valid_microf1"]          = float(valid_metrics_results["microf1"])
-    record_dict["valid_macrof1"]          = float(valid_metrics_results["macrof1"])
-    record_dict["valid_micro_acc"]        = float(valid_metrics_results["micro_acc"])
-    record_dict["valid_ham_loss"]         = float(err_label / label_count)
-    record_dict["valid_zero_acc"]         = float(1 - err_data / data_count)
+    record_dict["valid_microf1"]          = valid_metrics_results["microf1"].item()
+    record_dict["valid_macrof1"]          = valid_metrics_results["macrof1"].item()
+    record_dict["valid_micro_acc"]        = valid_metrics_results["micro_acc"].item()
+    record_dict["valid_ham_loss"]         = (err_label / label_count).item()
+    record_dict["valid_zero_acc"]         = (1 - err_data / data_count).item()
     record_dict["valid_total_loss"]      /= len(dataloader)
-    record_dict["valid_class_f1"]         = valid_metrics_results["class_f1"]
-    record_dict["valid_class_precision"]  = valid_metrics_results["class_precision"]
-    record_dict["valid_class_recall"]     = valid_metrics_results["class_recall"]
-    record_dict["tp"] = tp.cpu()
-    record_dict["fp"] = fp.cpu()
-    record_dict["fn"] = fn.cpu()
-    record_dict["tn"] = tn.cpu()
-    record_dict["conf_matrix"] = conf_matrix.cpu()
+    record_dict["valid_class_f1"]         = valid_metrics_results["class_f1"].tolist()
+    record_dict["valid_class_precision"]  = valid_metrics_results["class_precision"].tolist()
+    record_dict["valid_class_recall"]     = valid_metrics_results["class_recall"].tolist()
+    record_dict["valid_class_loss1"]      = (cls_loss / len(dataloader)).tolist()
+    record_dict["valid_class_loss2"]      = (cls_loss / cls_count).tolist()
+    record_dict["tp"] = tp.tolist()
+    record_dict["fp"] = fp.tolist()
+    record_dict["fn"] = fn.tolist()
+    record_dict["tn"] = tn.tolist()
+    # record_dict["conf_matrix"] = conf_matrix.cpu()
 
-    if to_list and isinstance(record_dict["valid_class_f1"], torch.Tensor) and \
-        isinstance(record_dict["valid_class_precision"], torch.Tensor) and \
-        isinstance(record_dict["valid_class_recall"], torch.Tensor) and \
-        isinstance(record_dict["conf_matrix"], torch.Tensor) :
+    # if to_list and isinstance(record_dict["valid_class_f1"], torch.Tensor) and \
+    #     isinstance(record_dict["valid_class_precision"], torch.Tensor) and \
+    #     isinstance(record_dict["valid_class_recall"], torch.Tensor) and \
+    #     isinstance(record_dict["conf_matrix"], torch.Tensor) :
         
-        record_dict["valid_class_f1"] = record_dict["valid_class_f1"].tolist()
-        record_dict["valid_class_precision"] = record_dict["valid_class_precision"].tolist()
-        record_dict["valid_class_recall"] = record_dict["valid_class_recall"].tolist()
-        record_dict["conf_matrix"] = record_dict["conf_matrix"].tolist()
+    #     record_dict["valid_class_f1"] = record_dict["valid_class_f1"].tolist()
+    #     record_dict["valid_class_precision"] = record_dict["valid_class_precision"].tolist()
+    #     record_dict["valid_class_recall"] = record_dict["valid_class_recall"].tolist()
+    #     record_dict["conf_matrix"] = record_dict["conf_matrix"].tolist()
+
+    return record_dict
+
+# Same with `evaluate_dataset_class_acc` but adapt for DDP
+@torch.no_grad()
+def evaluate_dataset_ddp( 
+    model: nn.Module,
+    dataloader: Dataloader,
+    cate_num: int,
+    device,
+    class_alpha: torch.Tensor = None,
+    gamma: float = 2,
+    # to_list = False
+) -> "dict[str]" :
+    '''
+    Evaluate model on a dataset
+    Use specific weight factor of focal loss ɑ for each class. Use another Macro F1 method
+    
+    Arguments :
+        cate_num `int`: Number of categories
+        class_f1: Return F1 score of each class
+        class_alpha `Tensor`: Alpha α of focal loss for each class. Each value is in range [0, 1]
+        gamma `float`: Exponent of the modulating factor (1 - p_t) to balance easy vs hard examples.
+        to_list `bool`: Convert the return values of Tensor to list
+
+    Returns :
+        `dict` containing evaluation results
+    '''
+
+    record_dict = {
+        "valid_ham_loss"        : 0,
+        "valid_zero_acc"        : 0,
+        "valid_total_loss"      : 0,
+        "valid_microf1"         : 0,
+        "valid_macrof1"         : 0,
+        "valid_micro_acc"       : 0,
+        "valid_class_f1"        : None,
+        "valid_class_precision" : None,
+        "valid_class_recall"    : None,
+        "valid_class_loss1"     : None,
+        "valid_class_loss2"     : None,
+        "tp"                    : None,
+        "fp"                    : None,
+        "fn"                    : None,
+        "tn"                    : None,
+        # "conf_matrix"           : None,
+    }
+
+    # TP, TN, FN, FP of each class, for calculating Macro F1
+    tp = torch.zeros(cate_num, dtype=torch.int).to(device)
+    fp = torch.zeros(cate_num, dtype=torch.int).to(device)
+    fn = torch.zeros(cate_num, dtype=torch.int).to(device)
+    tn = torch.zeros(cate_num, dtype=torch.int).to(device)
+    # For calculating Hamming acc and Zero acc
+    err_label   = torch.tensor(0, dtype=torch.int).to(device)
+    err_data    = torch.tensor(0, dtype=torch.int).to(device)
+    label_count = torch.tensor(0, dtype=torch.int).to(device)
+    data_count  = torch.tensor(0, dtype=torch.int).to(device)
+    # Loss of each class
+    cls_loss  = torch.zeros(cate_num).to(device)
+    cls_count = torch.zeros(cate_num, dtype=torch.int).to(device)
+    
+    total = len(dataloader)
+    world_size = dist.get_world_size()
+
+    model.eval() # Evaluation mode
+    for idx, (img, label, _) in enumerate(dataloader):
+        img: torch.Tensor = img.to(device)
+        label: torch.Tensor = label.to(device, dtype=torch.float32)
+        
+        out = model(img)["pred"]
+        logits = torch.sigmoid(out)
+        pred = torch.round(logits) # Threshold = 0.5
+        
+        # Loss
+        loss = cal_class_focal_loss(out, label, class_alpha, gamma, mean=False)
+        cls_loss += torch.masked_fill(loss, ~label.bool(), 0).sum(0)
+        cls_count += label.bool().sum(0)
+        loss = loss.mean()
+
+        # Metrics
+        tp_fp_fn_tn = cal_tp_fp_fn_tn(pred, label)
+        valid_err_cor = cal_error_nums(pred, label)
+        label_count += label.numel()
+        data_count += len(label)
+
+        record_dict["valid_total_loss"] += loss.to(device)
+        tp += tp_fp_fn_tn[0]
+        fp += tp_fp_fn_tn[1]
+        fn += tp_fp_fn_tn[2]
+        tn += tp_fp_fn_tn[3]
+        err_label += valid_err_cor[0]
+        err_data  += valid_err_cor[1]
+
+    # Loss
+    dist.all_reduce(record_dict["valid_total_loss"], op=dist.ReduceOp.SUM)
+    dist.all_reduce(cls_loss.to(device), op=dist.ReduceOp.SUM)
+    dist.all_reduce(cls_count.to(device), op=dist.ReduceOp.SUM)
+
+    record_dict["valid_total_loss"]  = record_dict["valid_total_loss"].item() / total / world_size
+    record_dict["valid_class_loss1"] = (cls_loss / total / world_size).tolist()
+    record_dict["valid_class_loss2"] = (cls_loss / cls_count).tolist()
+    
+    # Metrics
+    metrics_tensor = torch.stack([tp, fp, fn, tn])
+    counts_tensor = torch.stack([err_label, err_data, label_count, data_count])
+    dist.all_reduce(metrics_tensor, op=dist.ReduceOp.SUM)
+    dist.all_reduce(counts_tensor,  op=dist.ReduceOp.SUM)
+    tp, fp, fn, tn = metrics_tensor
+    err_label, err_data, label_count, data_count = counts_tensor
+    
+    record_dict["tp"] = tp.tolist()
+    record_dict["fp"] = fp.tolist()
+    record_dict["fn"] = fn.tolist()
+    record_dict["tn"] = tn.tolist()
+    valid_metrics_results = cal_f1_score_acc(tp, fp, fn, tn, class_acc=True)
+    record_dict["valid_microf1"]   = valid_metrics_results["microf1"].item()
+    record_dict["valid_macrof1"]   = valid_metrics_results["macrof1"].item()
+    record_dict["valid_micro_acc"] = valid_metrics_results["micro_acc"].item()
+    record_dict["valid_ham_loss"]  = (err_label / label_count).item()
+    record_dict["valid_zero_acc"]  = (1 - err_data / data_count).item()
+    
+    # Class accuracy
+    record_dict["valid_class_f1"]        = valid_metrics_results["class_f1"].tolist()
+    record_dict["valid_class_precision"] = valid_metrics_results["class_precision"].tolist()
+    record_dict["valid_class_recall"]    = valid_metrics_results["class_recall"].tolist()
 
     return record_dict
 

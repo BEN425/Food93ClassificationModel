@@ -198,6 +198,88 @@ class FoodDatasetWithMasks(data.Dataset):
     def __len__(self):
         return len(self.datalist)
 
+class TestDataset(data.Dataset):
+    '''
+    Dataset containing SingleFood and AIFood
+    
+    Arguments :
+        csv_path `str`: Path to csv file containing paths and labels of all image files. \
+            CSV file is seperated by comma, the first item is path to the image, the rests are labels in multi-hot format.
+        Ex (an image with label 2 and 4): `./path/to/image.jpg,0,0,1,0,1`
+        root `str`: Base path of image paths in the csv file. If None, the original path is used
+        transform `Transform`: Transformation to be apply on images. If not specified, \
+            a default transform is applied to convert PIL Image to Tensor.
+        hsv `bool`: Add 3 extra channels for HSV to the image (Total 6 channels: RGB + HSV)
+    '''
+    
+    def __init__(self, 
+            csv_path: str,
+            root: str = None,
+            transform = None,
+            hsv = False,
+        ):
+        
+        # Use default transformation if not specified
+        # Crop the image to 244x244 for ResNet50 input
+        self.transform = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Resize((256, 256), antialias=True),
+            transforms.CenterCrop(224),
+        ]) if transform is None else transform
+        
+        # List containing paths and labels of all images
+        # Each label is in multi-hot form
+        self.datalist = []
+        with open(csv_path, "r") as file:
+            csv_reader = csv.reader(file, delimiter=",")
+            for img_path, *label in csv_reader:
+                self.datalist.append((
+                    img_path,
+                    list(int(i) for i in label)
+                ))
+        
+        self.datalist = self.datalist[:1000] # test
+        
+        self.root = root
+        self.add_hsv = hsv
+        
+        #print(self.datalist)
+
+    def _get_image(self, img_path: str) -> torch.Tensor:
+        '''
+        Open an image and apply the transform
+        '''
+        
+        if self.root is not None :
+            img_path = os.path.join(self.root, img_path)
+        img = Image.open(img_path).convert("RGB")
+        img = self.transform(img)
+        
+        # Add 3 extra channels for HSV
+        if self.add_hsv :
+            img_hsv = img.convert("HSV")
+            img_hsv = self.transform(img_hsv)
+            img = torch.vstack((img, img_hsv))
+
+        return img
+    
+    def __getitem__(self, index: int) -> "tuple[torch.Tensor, torch.Tensor, int]" :
+        '''
+        Get an image from dataset
+        
+        Return :
+            img `Tensor` "[C, H, W]": Image in Tensor format
+            label `Tensor` "[1, CLS]": multi-hot label
+        '''
+        
+        img_path, label = self.datalist[index]
+        img = self._get_image(img_path)
+        
+        return img, torch.tensor(label), torch.Tensor(0) # Return 3 values for compability
+    
+    def __len__(self):
+        return len(self.datalist)
+
 
 if __name__ == "__main__":
 

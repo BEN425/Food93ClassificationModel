@@ -23,8 +23,12 @@
 4. 檢查資料集中是否有問題：`cd utility`, `python check_labels.py`, `python ckeck_image.py`
 5. 調整 `FoodImageCode/cfg/Setting.yml` 的設定，包含路徑、訓練參數等，詳細資訊參考 __Config__ 章節
 6. `cd ../FoodImageCode`
-5. 清除 CUDA 記憶體：`nvidia-smi | grep 'python' | awk '{ print $5 }' | xargs -n1 kill -9`
+5. 清除 CUDA 記憶體：
+    - `nvidia-smi | grep 'python' | awk '{ print $5 }' | xargs -n1 kill -9`
+    - `ps -a | grep -E '(python)|(torchrun)' | awk '{ print $1 }' | xargs -n1 kill -9`
 7. 開始訓練：`python main.py`
+    - Config yaml 檔預設位置為 `./cfg/Setting.yml`，指定 config yaml 檔位置：`CONFIG_PATH="your/config/file.yml" python main.py`
+    - 多 GPU 訓練：`torchrun --standalone --nproc_per_node=gpu --nnodes=1 main.py`
 8. 訓練結果會存放在 `FoodImageCode/Results` 中，包含 checkpoints 與 tensorboard logs
 
 # Database
