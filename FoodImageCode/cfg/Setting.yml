@@ -1,34 +1,33 @@
 PARSER_SETTING:
-    # SEED: 200
-    SEED: 300
+    SEED: 200
     GPU_ID: "0"
     WORKERS: 4
     EPOCHS: 30
-    # EPOCHS: 1
-    BATCH_SIZE: 10
-    EVAL_BATCH_SIZE: 10
+    # EPOCHS: 2
+    BATCH_SIZE: 32
+    EVAL_BATCH_SIZE: 32
 
 TRAIN_SETTING:
     ### Basic settings ###
     # ROOT: "D:/MSoCLab/ai/code"
-    ROOT: "/home/msoc/ben_aifood"
+    ROOT: "/work/u6140562/FoodS2C/"
     RESUME: False
-    CHECKPOINT_PATH: "FoodImageCode/Results/checkpoints/5_14/5_14_ModifiedResNet50_93_epoch_4.pth.tar"
+    CHECKPOINT_PATH: "FoodImageCode/Results/checkpoints/8_2_aisingle_200/8_3_ModifiedResNet50_93_epoch_8.pth.tar"
     TEST_METRICS: True
 
     ### Data Settings ###
 
     # DATA_BASE_DIR: "Database/only_ai_food"
     # DATA_BASE_DIR: "Database/single_food_with_preprocess_0503"
-    DATA_BASE_DIR:   'Database/aisingle_food_preprocess_0503'
-    ALL_CSV_DIR:     "FoodImageCode/csv/ai_single_food_200/AllFoodImage.csv"
-    TRAIN_CSV_DIR:   "FoodImageCode/csv/ai_single_food_200/AllFoodImage_train_ratio811.csv"
-    VALID_CSV_DIR:   "FoodImageCode/csv/ai_single_food_200/AllFoodImage_valid_ratio811.csv"
-    TEST_CSV_DIR:    "FoodImageCode/csv/ai_single_food_200/AllFoodImage_test_ratio811.csv"
+    DATA_BASE_DIR:   'Database/aisingle_food_preprocess_Yvonne_0820'
+    ALL_CSV_DIR:     "FoodImageCode/csv/yv_0820/ai_single_food_200/AllFoodImage.csv"
+    TRAIN_CSV_DIR:   "FoodImageCode/csv/yv_0820/ai_single_food_200/AllFoodImage_train_ratio811.csv"
+    VALID_CSV_DIR:   "FoodImageCode/csv/yv_0820/ai_single_food_200/AllFoodImage_valid_ratio811.csv"
+    TEST_CSV_DIR:    "FoodImageCode/csv/yv_0820/ai_single_food_200/AllFoodImage_test_ratio811.csv"
     FOODSEG_DIR:     "Database/FoodSeg103"
     FOODSEG_CSV_DIR: "FoodImageCode/csv/FoodSeg103.csv"
     SAVE_DIR:        "FoodImageCode/Results"
-    SAVE_SUB_NAME:   "8_2_aisingle_test"
+    SAVE_SUB_NAME:   "8_23_aisingle_focal30"
 
     ### S2C ###
 
@@ -53,5 +52,6 @@ TRAIN_SETTING:
         WEIGHT_DECAY: .0005
         OPTIMIZER: "Adam"
     LOSS:
-        ALPHA: 0.25
+        ALPHA: 0.3
         GAMMA: 2.0
+        INVERSE: True

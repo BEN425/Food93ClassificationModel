@@ -1,0 +1,56 @@
+PARSER_SETTING:
+    SEED: 200
+    GPU_ID: "0"
+    WORKERS: 4
+    EPOCHS: 30
+    # EPOCHS: 2
+    BATCH_SIZE: 96
+    EVAL_BATCH_SIZE: 96
+
+TRAIN_SETTING:
+    ### Basic settings ###
+    # ROOT: "D:/MSoCLab/ai/code"
+    ROOT: "/work/u6140562/FoodS2C/"
+    RESUME: False
+    CHECKPOINT_PATH: "FoodImageCode/Results/checkpoints/8_2_aisingle_200/8_3_ModifiedResNet50_93_epoch_8.pth.tar"
+    TEST_METRICS: True
+
+    ### Data Settings ###
+
+    # DATA_BASE_DIR: "Database/only_ai_food"
+    # DATA_BASE_DIR: "Database/single_food_with_preprocess_0503"
+    DATA_BASE_DIR:   'Database/aisingle_food_preprocess_0503'
+    ALL_CSV_DIR:     "FoodImageCode/csv/ai_single_food_200/AllFoodImage.csv"
+    TRAIN_CSV_DIR:   "FoodImageCode/csv/ai_single_food_200/AllFoodImage_train_ratio811.csv"
+    VALID_CSV_DIR:   "FoodImageCode/csv/ai_single_food_200/AllFoodImage_valid_ratio811.csv"
+    TEST_CSV_DIR:    "FoodImageCode/csv/ai_single_food_200/AllFoodImage_test_ratio811.csv"
+    FOODSEG_DIR:     "Database/FoodSeg103"
+    FOODSEG_CSV_DIR: "FoodImageCode/csv/FoodSeg103.csv"
+    SAVE_DIR:        "FoodImageCode/Results"
+    SAVE_SUB_NAME:   "8_10_aisingle_env_test"
+
+    ### S2C ###
+
+    SAM_DIR: "pretrained/sam_vit_b.pth"
+    SAM_MASK_DIR: "sam_map/"
+    USE_SSC: False
+    USE_CPM: False
+
+    ### Model ###
+
+    MODEL:
+        TYPE: "ResNet50"
+        NAME: "ModifiedResNet50_93"
+        INCHANNELS:   3
+        OUTCHANNELS:  64
+        CATEGORY_NUM: 93
+        CBAM:  [False, False, False, False]
+        SENET: [False, False, False, False]
+        # LR: .00001
+        LR: .0001
+        MOMENTUM: 0.9
+        WEIGHT_DECAY: .0005
+        OPTIMIZER: "Adam"
+    LOSS:
+        ALPHA: 0.25
+        GAMMA: 2.0

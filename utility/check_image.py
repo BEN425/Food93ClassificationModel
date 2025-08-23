@@ -11,7 +11,7 @@ import pillow_avif
 
 from rich import print
 
-DATABASE = "only_ai_food"
+DATABASE = "aisingle_food_preprocess_0820"
 
 image_list = glob(f"../Database/{DATABASE}/**/*.*", recursive=True)
 

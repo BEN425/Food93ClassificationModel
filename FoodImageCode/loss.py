@@ -11,7 +11,7 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import transforms
 from torchvision.ops.focal_loss import sigmoid_focal_loss
-import torch_scatter
+# import torch_scatter
 
 ### Loss CLS ###
 
@@ -29,6 +29,7 @@ def cal_class_focal_loss(
     label: torch.Tensor,
     class_alpha: torch.Tensor = .25,
     gamma: float = 2,
+    inverse: bool = True,
     mean: bool = True,
 ) -> torch.Tensor:
     """
@@ -55,7 +56,7 @@ def cal_class_focal_loss(
 
     # Alpha
     class_alpha = .25 if class_alpha is None else class_alpha
-    alpha_t = (1 - class_alpha) * label + class_alpha * (1 - label)
+    alpha_t = (1 - class_alpha) * label + class_alpha * (1 - label) if inverse else class_alpha
     loss = alpha_t * loss
 
     return loss.mean() if mean else loss
