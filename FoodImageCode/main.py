@@ -1,5 +1,6 @@
 import os
 import random
+import shutil
 import json
 
 import numpy as np
@@ -81,26 +82,22 @@ def main(cfg: dict) :
         ###### Load optimizer #####
 
         opt_name = cfg["MODEL"]["OPTIMIZER"].strip().lower()
-        # Poly Optimizer
-        # TODO: Add poly optimizer
-        if "poly" in opt_name :
-            pass
+
+        # SGD
+        if "sgd" in opt_name :
+            opt = torch.optim.SGD(
+                model.parameters(),
+                lr=cfg["MODEL"]["LR"],
+                momentum=cfg["MODEL"]["MOMENTUM"],
+                weight_decay=cfg["MODEL"]["WEIGHT_DECAY"]
+            )
+        # Default: AdamW
         else :
-            # SGD
-            if "sgd" in opt_name :
-                opt = torch.optim.SGD(
-                    model.parameters(),
-                    lr=cfg["MODEL"]["LR"],
-                    momentum=cfg["MODEL"]["MOMENTUM"],
-                    weight_decay=cfg["MODEL"]["WEIGHT_DECAY"]
-                )
-            # Default: AdamW
-            else :
-                opt = torch.optim.AdamW(
-                    model.parameters(),
-                    lr=cfg["MODEL"]["LR"],
-                    weight_decay=cfg["MODEL"]["WEIGHT_DECAY"]
-                )
+            opt = torch.optim.AdamW(
+                model.parameters(),
+                lr=cfg["MODEL"]["LR"],
+                weight_decay=cfg["MODEL"]["WEIGHT_DECAY"]
+            )
 
         logger.info(f"Optimizer:\n{opt}")
 
@@ -115,6 +112,7 @@ def main(cfg: dict) :
                 map_location={"cuda:0": f"cuda:{device}"} if using_ddp else "cpu"
             )
             model.load_state_dict(checkpoint["model"])
+            model = model.to(device)
             opt.load_state_dict(checkpoint["opt"])
             start_epoch += checkpoint["epoch"] + 1
             end_epoch += checkpoint["epoch"]
@@ -134,17 +132,12 @@ def main(cfg: dict) :
         ##### Training #####
 
         # Load class frequencies and entropies for focal loss parameter ɑ
-        # console.print("Loading class frequencies and entropies...")
-        # cls_freq = load_class_frequency(cfg)
-        # cls_entropy = load_class_entropy(cfg)
-        # cls_entropy /= cls_entropy.max()
-        # cls_entropy *= .99
-        # console.print(cls_freq)
-        # console.print(cls_entropy)
+        console.print("Loading class weights...")
+        cls_weight = load_class_weight(cfg, device)
+        
+        logger.info(f"Class Weights:\n{cls_weight}")
 
-        # if device == 0 :
-        #     dist.barrier()
-
+        if using_ddp : dist.barrier()
         # Training
         logger.info("Setup trainer...")
         console.print("Training...")
@@ -162,7 +155,7 @@ def main(cfg: dict) :
         logger.info("Start training...")
         results = trainer.train(
             start_epoch, end_epoch, cfg,
-            class_alpha=cfg["LOSS"]["ALPHA"],
+            class_alpha=cls_weight,
             gamma=cfg["LOSS"]["GAMMA"],
         )
         logger.info("Training finished.")
@@ -190,7 +183,9 @@ def main(cfg: dict) :
             dist.destroy_process_group()
             console.print("Destroyed process group.")
 
-# Initialize random seeds
+### Initialization Functions ###
+
+# Initialize random seeds and set deterministic algorithms
 def init_seed(seed: int, cuda_deterministic=True) :
     random.seed(seed)
     np.random.seed(seed)
@@ -203,8 +198,8 @@ def init_seed(seed: int, cuda_deterministic=True) :
     if os.environ.get("CUBLAS_WORKSPACE_CONFIG") is None:
         os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
     torch.use_deterministic_algorithms(True)
-    
-# Initialization for DDP
+
+# Initialization for DDP, not used in single GPU
 def ddp_setup() :
     #! Explicity specify addr and port might get error
     #! RuntimeError: nonce == returnedNonce INTERNAL ASSERT FAILED at "/pytorch/torch/csrc/distributed/c10d/TCPStore.cpp":418, please report a bug to PyTorch. Ping failed, invalid nonce returned
@@ -217,6 +212,8 @@ def ddp_setup() :
     dist.init_process_group(backend="nccl", init_method="env://", timeout=datetime.timedelta(seconds=30))
     rank = int(os.environ["LOCAL_RANK"])
     torch.cuda.set_device(rank)
+
+### Loader Functions ###
 
 # Load pretraind classification model
 def load_model(cfg: dict) -> nn.Module :
@@ -281,40 +278,46 @@ def load_sam_model(cfg: dict) -> nn.Module :
             sam_name = name
             break
     
-    if sam_name is None :
-        raise ValueError(f"SAM model name should be one of {model_names}")
+    assert sam_name is not None, f"SAM model name should be one of {model_names}"
     
     return sam_model_registry[sam_name](checkpoint=cfg["SAM_DIR"])
 
-# Load class frequency and entropy for focal loss
-# Class frequency is loaded from "Database/class_freq.txt"
-# Class entropy is loaded from "Database/class_entropy.txt"
-# Execute "utility/calc_class_freq_entropy.py" to generate the data
-def load_class_frequency(cfg: dict) -> torch.Tensor :
-        cls_freq = torch.zeros(cfg["MODEL"]["CATEGORY_NUM"])
-        
-        with open(os.path.join(cfg["DATA_BASE_DIR"], "..", "class_freq.txt"), "r") as file :
-            for i, line in enumerate(file.readlines()) :
-                cls_freq[i] = float(line)
-        
-        return cls_freq
-def load_class_entropy(cfg: dict) -> torch.Tensor :
-    cls_entropy = torch.zeros(cfg["MODEL"]["CATEGORY_NUM"])
+# Load class weights for focal loss
+def load_class_weight(cfg: dict, device: torch.device) -> "float | torch.Tensor" :
+    alpha = cfg["LOSS"]["ALPHA"]
     
-    with open(os.path.join(cfg["DATA_BASE_DIR"], "..", "class_entropy.txt"), "r") as file :
-        for i, line in enumerate(file.readlines()) :
-            cls_entropy[i] = float(line)
+    # Setting alpha as hyperparameter
+    if isinstance(alpha, (int, float)) : return alpha
     
-    return cls_entropy * .99
-
-# Initialize random seed of dataloader
-def seed_worker(worker_id):
-    worker_seed = torch.initial_seed() % 2**32
-    np.random.seed(worker_seed)
-    random.seed(worker_seed)
+    # Setting alpha for each class
+    if isinstance(alpha, (list, tuple)) :
+        assert len(alpha) == cfg["MODEL"]["CATEGORY_NUM"], "ALPHA list length should equal to category numbers"
+        return torch.tensor(alpha).to(device)
+    
+    # Read alpha from a file
+    if isinstance(alpha, str) :
+        console.print(f"Loading class weights from \"{alpha}\"")
+        with open(alpha, "r") as file :
+            alpha_list = [float(line) for line in file.readlines()]
+        assert len(alpha_list) == cfg["MODEL"]["CATEGORY_NUM"], "ALPHA list length should equal to category numbers"
+        
+        log_path = os.path.join(cfg["SAVE_DIR"], "logs", cfg["SAVE_SUB_NAME"])
+        shutil.copyfile(alpha, os.path.join(log_path, os.path.basename(alpha)))
+        
+        return torch.tensor(alpha_list).to(device)
+    
+    console.print("Class alpha is not set, using default value 0.25")
+    return 0.25
 
 # Load datasets from csv file and apply preprocessing
 def load_dataset(cfg: dict, using_ddp: bool = False, rank: int = 0) -> "dict[str, DataLoader]":
+    
+    # Initialize random seed of dataloader
+    def seed_worker(worker_id):
+        worker_seed = torch.initial_seed() % 2**32
+        np.random.seed(worker_seed)
+        random.seed(worker_seed)
+    
     # Transforms
     train_trfs = transforms.Compose([
         transforms.ToTensor(),
@@ -332,13 +335,15 @@ def load_dataset(cfg: dict, using_ddp: bool = False, rank: int = 0) -> "dict[str
         #     shear=2
         # ),
         # transforms.RandomErasing(p=0.2, scale=(0.02, 0.15), ratio=(0.3, 3.3)),
-        transforms.Normalize(mean=[0.522, 0.475, 0.408], std=[0.118, 0.115, 0.117])
+        # transforms.Normalize(mean=[0.522, 0.475, 0.408], std=[0.118, 0.115, 0.117])
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
     valid_trfs = transforms.Compose([
         transforms.ToTensor(),
         transforms.Resize((256, 256), antialias=True),
         transforms.CenterCrop(224),
-        transforms.Normalize(mean=[0.522, 0.475, 0.408], std=[0.118, 0.115, 0.117])
+        # transforms.Normalize(mean=[0.522, 0.475, 0.408], std=[0.118, 0.115, 0.117])
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
     ])
 
     logger.info(f"Train transforms:\n{train_trfs}")
@@ -346,7 +351,7 @@ def load_dataset(cfg: dict, using_ddp: bool = False, rank: int = 0) -> "dict[str
 
     # Load dataset and dataloader
 
-    # Split batch to multiple GPUs
+    #? Split batch to multiple GPUs
     train_ba_size = cfg["BATCH_SIZE"]      // dist.get_world_size() if using_ddp else cfg["BATCH_SIZE"]
     valid_ba_size = cfg["EVAL_BATCH_SIZE"] // dist.get_world_size() if using_ddp else cfg["EVAL_BATCH_SIZE"]
 
@@ -401,7 +406,6 @@ def load_dataset(cfg: dict, using_ddp: bool = False, rank: int = 0) -> "dict[str
 
 if __name__ == "__main__":
     import time
-    import shutil
     import pprint
     start = time.time()
     
@@ -412,7 +416,6 @@ if __name__ == "__main__":
         config_path = os.environ.get("CONFIG_PATH", "./cfg/Setting.yml")
         cfgparser = CfgParser(config_path=config_path)
         cfg = cfgparser.cfg_dict
-        
         log_path = os.path.join(cfg["SAVE_DIR"], "logs", cfg["SAVE_SUB_NAME"])
         
         console.print(f"Cconfig path: \"{config_path}\"")
@@ -425,6 +428,7 @@ if __name__ == "__main__":
         # Check directory empty to prevent accidentally overwriting results
         # if os.listdir(log_path) :
         #     raise Exception(f"Result folder \"{log_path}\" is not empty. Please change \"SAVE_SUB_NAME\" in config file or remove the results.")
+        
         # Setup logger
         os.makedirs(log_path, exist_ok=True)
         log_file = open(
@@ -443,12 +447,12 @@ if __name__ == "__main__":
         logger.info(f"Config path: \"{config_path}\"")
         logger.info(f"Config:\n{pprint.pformat(cfg, indent=4)}")
 
-        # Copy csv files
+        # Record csv files
         shutil.copyfile(cfg["ALL_CSV_DIR"],   os.path.join(log_path, os.path.basename(cfg["ALL_CSV_DIR"])))
         shutil.copyfile(cfg["TRAIN_CSV_DIR"], os.path.join(log_path, os.path.basename(cfg["TRAIN_CSV_DIR"])))
         shutil.copyfile(cfg["VALID_CSV_DIR"], os.path.join(log_path, os.path.basename(cfg["VALID_CSV_DIR"])))
         shutil.copyfile(cfg["TEST_CSV_DIR"],  os.path.join(log_path, os.path.basename(cfg["TEST_CSV_DIR"])))
-        # Copy config file
+        # Record config file
         shutil.copyfile(config_path, os.path.join(log_path, os.path.basename(config_path)))
         
         main(cfg)

@@ -23,7 +23,7 @@ class FoodDataset(data.Dataset):
         csv_path `str`: Path to csv file containing paths and labels of all image files. \
             CSV file is seperated by comma, the first item is path to the image, the rests are labels in multi-hot format.
         Ex (an image with label 2 and 4): `./path/to/image.jpg,0,0,1,0,1`
-        root `str`: Base path of image paths in the csv file. If None, the original path is used
+        root `str`: Base path of image paths in the CSV file. If None, the original path in CSV file is used
         transform `Transform`: Transformation to be apply on images. If not specified, \
             a default transform is applied to convert PIL Image to Tensor.
         hsv `bool`: Add 3 extra channels for HSV to the image (Total 6 channels: RGB + HSV)
@@ -65,6 +65,8 @@ class FoodDataset(data.Dataset):
     def _get_image(self, img_path: str) -> torch.Tensor:
         '''
         Open an image and apply the transform
+        
+        Return Tensor of tthe image
         '''
         
         if self.root is not None :
@@ -84,6 +86,8 @@ class FoodDataset(data.Dataset):
         '''
         Get an image from dataset
         
+        Argument :
+            index `int`
         Return :
             img `Tensor` "[C, H, W]": Image in Tensor format
             label `Tensor` "[1, CLS]": multi-hot label
@@ -200,16 +204,7 @@ class FoodDatasetWithMasks(data.Dataset):
 
 class TestDataset(data.Dataset):
     '''
-    Dataset containing SingleFood and AIFood
-    
-    Arguments :
-        csv_path `str`: Path to csv file containing paths and labels of all image files. \
-            CSV file is seperated by comma, the first item is path to the image, the rests are labels in multi-hot format.
-        Ex (an image with label 2 and 4): `./path/to/image.jpg,0,0,1,0,1`
-        root `str`: Base path of image paths in the csv file. If None, the original path is used
-        transform `Transform`: Transformation to be apply on images. If not specified, \
-            a default transform is applied to convert PIL Image to Tensor.
-        hsv `bool`: Add 3 extra channels for HSV to the image (Total 6 channels: RGB + HSV)
+    Dataset class for testing
     '''
     
     def __init__(self, 

@@ -25,14 +25,15 @@ logging.basicConfig(
 # Setup
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+print(f"Device: {device}")
 
 
-DATABASE = "single_food_with_preprocess_0503"
-SAM = "vit_h"
+DATABASE = "aisingle_food_preprocess_0820"
+SAM = "vit_b"
 
-root_path = '/home/msoc/ben_s2c/S2C'
+root_path = '/home/msoc/ben_aifood'
 data_path = f'/home/msoc/ben_aifood/Database/{DATABASE}'
-result_path = f'/home/msoc/ben_s2c/S2C/sam_map/{DATABASE}'
+result_path = f'/home/msoc/ben_aifood/sam_map_2'
 
 logging.info(f"device: {device}")
 logging.info(f"database: {data_path}")
@@ -79,8 +80,8 @@ for j, entry in track(
         
         np.savez_compressed(out_path, temp)
         
-        if j % 100 == 0 and i != 0 :
-            logging.info(f"Progress: {i}/{len(entries)}")
+        if j % 100 == 0 and j != 0 :
+            logging.info(f"Progress: {j}/{len(entries)}")
     
     except Exception as e:
         logging.error(f"Failed image '{entry}': {e}")

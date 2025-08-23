@@ -10,6 +10,7 @@
 *.tar
 *.pth
 *.npz
+*.log
 Pipfile*
 compress.py
 temp

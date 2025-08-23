@@ -72,7 +72,7 @@ def write_csv(data_dict: dict, out_path: str) :
         for i, datas in enumerate(zip(*data_dict.values()), start=step_min) :
             writer.writerow(chain((i,), (d[1] for d in datas)))
 
-def write_worksheet(ws: Worksheet, data_dict: dict) :
+def write_worksheet(ws: Worksheet, data_dict: dict, plot=False) :
     def search_key(*search) :
         for key in data_dict.keys() :
             if all(map(lambda x: x in key, search)) :
@@ -95,43 +95,44 @@ def write_worksheet(ws: Worksheet, data_dict: dict) :
         for j, d in enumerate(datas, start=col+1) :
             ws.cell(i, j).value = d[1]
     
-    # Plot chart
-    tag_list = list(data_dict.keys())
-    step_count = len(list(data_dict.values())[0])
-    step_ref = xlchart.Reference(ws, col, row, col, row + step_count - 1)
-    for j, key in enumerate(data_dict.keys(), start=col+1) :
-        data_ref = xlchart.Reference(ws, j, row-1, j, row + step_count - 1)
-        chart = xlchart.LineChart()
-        chart.set_categories(step_ref)
-        chart.add_data(data_ref, titles_from_data=True)
-        ws.add_chart(chart, f"{xlutil.get_column_letter(j)}{row}")
+    if plot :
+        # Plot chart
+        tag_list = list(data_dict.keys())
+        step_count = len(list(data_dict.values())[0])
+        step_ref = xlchart.Reference(ws, col, row, col, row + step_count - 1)
+        for j, key in enumerate(data_dict.keys(), start=col+1) :
+            data_ref = xlchart.Reference(ws, j, row-1, j, row + step_count - 1)
+            chart = xlchart.LineChart()
+            chart.set_categories(step_ref)
+            chart.add_data(data_ref, titles_from_data=True)
+            ws.add_chart(chart, f"{xlutil.get_column_letter(j)}{row}")
 
-    # Plot F1 scores and loss
-    chart_col = "A"
-    loss_chart = xlchart.LineChart()
-    for conf in ["train", "valid"] :
-        # F1 scores
-        f1_chart = xlchart.LineChart()
-        for metric in ["macro", "micro"] :
-            key = search_key(conf, metric, "f1")
+        # Plot F1 scores and loss
+        chart_col = "A"
+        loss_chart = xlchart.LineChart()
+        for conf in ["train", "valid"] :
+            # F1 scores
+            f1_chart = xlchart.LineChart()
+            for metric in ["macro", "micro"] :
+                key = search_key(conf, metric, "f1")
+                index = tag_list.index(key) + col + 1
+                data_ref = xlchart.Reference(ws, index, row-1, index, row + step_count - 1)
+                f1_chart.add_data(data_ref, titles_from_data=True)
+            f1_chart.set_categories(step_ref)
+            f1_chart.title = f"{conf} F1"
+            ws.add_chart(f1_chart, f"{chart_col}10")
+
+            # Loss
+            key = search_key(conf, "total", "loss")
             index = tag_list.index(key) + col + 1
             data_ref = xlchart.Reference(ws, index, row-1, index, row + step_count - 1)
-            f1_chart.add_data(data_ref, titles_from_data=True)
-        f1_chart.set_categories(step_ref)
-        f1_chart.title = f"{conf} F1"
-        ws.add_chart(f1_chart, f"{chart_col}10")
+            loss_chart.add_data(data_ref, titles_from_data=True)
 
-        # Loss
-        key = search_key(conf, "total", "loss")
-        index = tag_list.index(key) + col + 1
-        data_ref = xlchart.Reference(ws, index, row-1, index, row + step_count - 1)
-        loss_chart.add_data(data_ref, titles_from_data=True)
-
-        chart_col = "E"
-    
-    loss_chart.set_categories(step_ref)
-    loss_chart.title = f"Loss"
-    ws.add_chart(loss_chart, f"{chart_col}15")
+            chart_col = "E"
+        
+        loss_chart.set_categories(step_ref)
+        loss_chart.title = f"Loss"
+        ws.add_chart(loss_chart, f"{chart_col}15")
 
 data_dict = get_log_data(LOG_PATH)
 write_csv(data_dict, os.path.join(LOG_PATH, "out.csv"))

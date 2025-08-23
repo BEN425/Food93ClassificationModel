@@ -14,7 +14,6 @@ from torch.utils.data import DataLoader as Dataloader
 
 import numpy as np
 
-from cam import class_activation_map
 from loss import cal_bce_loss, cal_l2_regularization, cal_class_focal_loss
 from rich import get_console
 
@@ -202,6 +201,7 @@ def evaluate_dataset(
     cate_num: int,
     device,
     class_alpha: torch.Tensor = None,
+    alpha_inverse: bool = False,
     gamma: float = 2
 ) -> "dict[str, float]" :
     '''
@@ -248,7 +248,7 @@ def evaluate_dataset(
         pred = torch.round(logits) # Threshold = 0.5
         
         # Loss
-        loss = cal_class_focal_loss(out, label, class_alpha, gamma)
+        loss = cal_class_focal_loss(out, label, class_alpha, gamma, alpha_inverse)
 
         # Metrics
         tp_fp_fn_tn = cal_tp_fp_fn_tn(pred, label)
@@ -282,11 +282,11 @@ def evaluate_dataset_class_acc(
     model: nn.Module,
     dataloader: Dataloader,
     cate_num: int,
-    device,
+    device: torch.device,
     class_alpha: torch.Tensor = None,
+    alpha_inverse: bool = False,
     gamma: float = 2,
-    # to_list = False
-) -> "dict[str, float]" :
+) -> "dict[str, float|list[float]]" :
     '''
     Evaluate model on a dataset
     Use specific weight factor of focal loss ɑ for each class. Use another Macro F1 method
@@ -346,7 +346,7 @@ def evaluate_dataset_class_acc(
         pred = torch.round(logits) # Threshold = 0.5
         
         # Loss
-        loss = cal_class_focal_loss(out, label, class_alpha, gamma, mean=False)
+        loss = cal_class_focal_loss(out, label, class_alpha, gamma, alpha_inverse, mean=False)
         cls_loss += torch.masked_fill(loss, ~label.bool(), 0).sum(0)
         cls_count += label.bool().sum(0)
         loss = loss.mean()
@@ -364,14 +364,6 @@ def evaluate_dataset_class_acc(
         tn += tp_fp_fn_tn[3]
         err_label += valid_err_cor[0]
         err_data  += valid_err_cor[1]
-
-        # Confusion Matrix
-        # for l, p in zip(label, pred) :
-        #     cls_ids = l.nonzero().long()
-        #     for id in cls_ids :
-        #         p_ = p.clone().int()
-        #         p_[ cls_ids[id != cls_ids] ] = 0
-        #         conf_matrix[id] += p_
 
     # Record loss and metrics
     valid_metrics_results = cal_f1_score_acc(tp, fp, fn, tn, class_acc=True)
@@ -391,17 +383,6 @@ def evaluate_dataset_class_acc(
     record_dict["fp"] = fp.tolist()
     record_dict["fn"] = fn.tolist()
     record_dict["tn"] = tn.tolist()
-    # record_dict["conf_matrix"] = conf_matrix.cpu()
-
-    # if to_list and isinstance(record_dict["valid_class_f1"], torch.Tensor) and \
-    #     isinstance(record_dict["valid_class_precision"], torch.Tensor) and \
-    #     isinstance(record_dict["valid_class_recall"], torch.Tensor) and \
-    #     isinstance(record_dict["conf_matrix"], torch.Tensor) :
-        
-    #     record_dict["valid_class_f1"] = record_dict["valid_class_f1"].tolist()
-    #     record_dict["valid_class_precision"] = record_dict["valid_class_precision"].tolist()
-    #     record_dict["valid_class_recall"] = record_dict["valid_class_recall"].tolist()
-    #     record_dict["conf_matrix"] = record_dict["conf_matrix"].tolist()
 
     return record_dict
 
@@ -411,11 +392,11 @@ def evaluate_dataset_ddp(
     model: nn.Module,
     dataloader: Dataloader,
     cate_num: int,
-    device,
+    device: torch.device,
     class_alpha: torch.Tensor = None,
+    alpha_inverse: bool = False,
     gamma: float = 2,
-    # to_list = False
-) -> "dict[str]" :
+) -> "dict[str, float|list[float]]" :
     '''
     Evaluate model on a dataset
     Use specific weight factor of focal loss ɑ for each class. Use another Macro F1 method
@@ -477,7 +458,7 @@ def evaluate_dataset_ddp(
         pred = torch.round(logits) # Threshold = 0.5
         
         # Loss
-        loss = cal_class_focal_loss(out, label, class_alpha, gamma, mean=False)
+        loss = cal_class_focal_loss(out, label, class_alpha, gamma, inverse=alpha_inverse, mean=False)
         cls_loss += torch.masked_fill(loss, ~label.bool(), 0).sum(0)
         cls_count += label.bool().sum(0)
         loss = loss.mean()
