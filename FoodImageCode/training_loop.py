@@ -281,7 +281,7 @@ class Trainer():
                     loss_ssc = torch.Tensor([0]).to(self.device)
                 
                 # Process CPM
-                if self.cfg["USE_CPM"] :
+                if self.cfg["USE_CPM"] and epoch >= 2 :
                     self.model.eval()
                     
                     cam_ms = self._multi_scale_cam(img, label) # [B, CLS, H, W]
@@ -290,7 +290,7 @@ class Trainer():
                         label,
                         cam_ms,
                         size_sam = 1024,
-                        threshold = 0.2,
+                        threshold = 0.5,
                     )
                     pgt_sam = self._aggregate_sam_cam(
                         img,
@@ -318,7 +318,7 @@ class Trainer():
                     loss_cpm = torch.Tensor([0]).to(self.device)
                 
                 # Total loss
-                loss = loss_cls + loss_ssc + loss_cpm
+                loss = loss_cls + loss_ssc*0.0001 + loss_cpm*0.0001
                 
                 self.model.train()
                 
@@ -628,7 +628,7 @@ class Trainer():
         # SAM encoder, embed images
         features_sam = self.sam(
             run_encoder_only=True,
-            transformed_image=image_tensor,
+            transformed_image=image_sam,
             original_image_size=(H, W)
         )
         

@@ -5,8 +5,8 @@ PARSER_SETTING:
     WORKERS: 4
     EPOCHS: 15
     # EPOCHS: 1
-    BATCH_SIZE: 16
-    EVAL_BATCH_SIZE: 16
+    BATCH_SIZE: 1
+    EVAL_BATCH_SIZE: 1
 
 TRAIN_SETTING:
     ### Basic settings ###
@@ -21,21 +21,21 @@ TRAIN_SETTING:
     # DATA_BASE_DIR: "Database/only_ai_food"
     # DATA_BASE_DIR: "Database/single_food_with_preprocess_0503"
     DATA_BASE_DIR:   'Database/aisingle_food_preprocess_Yvonne_0820'
-    ALL_CSV_DIR:     "FoodImageCode/csv/yv_0820/ai_single_food_200/AllFoodImage.csv"
-    TRAIN_CSV_DIR:   "FoodImageCode/csv/yv_0820/ai_single_food_200/AllFoodImage_train_ratio811.csv"
-    VALID_CSV_DIR:   "FoodImageCode/csv/yv_0820/ai_single_food_200/AllFoodImage_valid_ratio811.csv"
-    TEST_CSV_DIR:    "FoodImageCode/csv/yv_0820/ai_single_food_200/AllFoodImage_test_ratio811.csv"
+    ALL_CSV_DIR:     "FoodImageCode/csv/0503/single_food/AllFoodImage.csv"
+    TRAIN_CSV_DIR:   "FoodImageCode/csv/0503/single_food/AllFoodImage_train_ratio811.csv"
+    VALID_CSV_DIR:   "FoodImageCode/csv/0503/single_food/AllFoodImage_valid_ratio811.csv"
+    TEST_CSV_DIR:    "FoodImageCode/csv/0503/single_food/AllFoodImage_test_ratio811.csv"
     FOODSEG_DIR:     "Database/FoodSeg103"
     FOODSEG_CSV_DIR: "FoodImageCode/csv/FoodSeg103.csv"
     SAVE_DIR:        "FoodImageCode/Results"
-    SAVE_SUB_NAME:   "8_14_aisingle_test"
+    SAVE_SUB_NAME:   "8_26_s2c_test"
 
     ### S2C ###
 
     SAM_DIR: "pretrained/sam_vit_b.pth"
     SAM_MASK_DIR: "sam_map/"
-    USE_SSC: False
-    USE_CPM: False
+    USE_SSC: True
+    USE_CPM: True
 
     ### Model ###
 
@@ -55,3 +55,4 @@ TRAIN_SETTING:
     LOSS:
         ALPHA: 0.25
         GAMMA: 2.0
+        INVERSE: False

@@ -13,6 +13,9 @@ import torchvision.transforms as transforms
 from torch.utils.data.distributed import DistributedSampler
 import torch.distributed as dist
 from torch.nn.parallel import DistributedDataParallel as DDP
+import albumentations as A
+import cv2
+
 
 from dataset import FoodDataset, FoodDatasetWithMasks, TestDataset
 from training_loop import Trainer
@@ -197,7 +200,7 @@ def init_seed(seed: int, cuda_deterministic=True) :
     torch.backends.cudnn.allow_tf32 = False
     if os.environ.get("CUBLAS_WORKSPACE_CONFIG") is None:
         os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
-    torch.use_deterministic_algorithms(True)
+    torch.use_deterministic_algorithms(True, warn_only=True)
 
 # Initialization for DDP, not used in single GPU
 def ddp_setup() :
@@ -319,32 +322,54 @@ def load_dataset(cfg: dict, using_ddp: bool = False, rank: int = 0) -> "dict[str
         random.seed(worker_seed)
     
     # Transforms
-    train_trfs = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Resize((256, 256), antialias=True),
-        transforms.CenterCrop(224),
-        # Apply random transform to augment images
-        
-        transforms.RandomHorizontalFlip(p=0.5),
-        # transforms.RandomRotation(degrees=10),
-        # transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.05),
-        # transforms.RandomAffine(
-        #     degrees=5,
-        #     translate=(0.02, 0.02),
-        #     scale=(0.95, 1.05),
-        #     shear=2
-        # ),
-        # transforms.RandomErasing(p=0.2, scale=(0.02, 0.15), ratio=(0.3, 3.3)),
-        # transforms.Normalize(mean=[0.522, 0.475, 0.408], std=[0.118, 0.115, 0.117])
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ])
-    valid_trfs = transforms.Compose([
-        transforms.ToTensor(),
-        transforms.Resize((256, 256), antialias=True),
-        transforms.CenterCrop(224),
-        # transforms.Normalize(mean=[0.522, 0.475, 0.408], std=[0.118, 0.115, 0.117])
-        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-    ])
+    if cfg["USE_SSC"] :
+        train_trfs = A.Compose([
+            A.Resize(256, 256, interpolation=cv2.INTER_LINEAR),
+            A.CenterCrop(224, 224),
+            A.HorizontalFlip(p=0.5),
+            A.Rotate(limit=10, p=0.5, interpolation=cv2.INTER_LINEAR),
+            A.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.05, p=0.5),
+            A.Affine(
+                rotate=(-5, 5), 
+                translate_percent=(0.02, 0.02), 
+                scale=(0.95, 1.05), 
+                shear=2, 
+                interpolation=cv2.INTER_LINEAR, 
+                mask_interpolation=cv2.INTER_NEAREST,
+                p=0.5
+            ),
+        ])
+        valid_trfs = A.Compose([
+            A.Resize(256, 256),
+            A.CenterCrop(224, 224),
+            # A.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+            # ToTensorV2()
+        ])
+    else :
+        train_trfs = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Resize((256, 256), antialias=True),
+            transforms.CenterCrop(224),
+            # Apply random transform to augment images
+            
+            transforms.RandomHorizontalFlip(p=0.5),
+            transforms.RandomRotation(degrees=10),
+            transforms.ColorJitter(brightness=0.2, contrast=0.2, saturation=0.2, hue=0.05),
+            transforms.RandomAffine(
+                degrees=5,
+                translate=(0.02, 0.02),
+                scale=(0.95, 1.05),
+                shear=2
+            ),
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+        ])
+        valid_trfs = transforms.Compose([
+            transforms.ToTensor(),
+            transforms.Resize((256, 256), antialias=True),
+            transforms.CenterCrop(224),
+            # transforms.Normalize(mean=[0.522, 0.475, 0.408], std=[0.118, 0.115, 0.117])
+            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
+        ])
 
     logger.info(f"Train transforms:\n{train_trfs}")
     logger.info(f"Valid transforms:\n{valid_trfs}")

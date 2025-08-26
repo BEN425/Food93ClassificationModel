@@ -14,6 +14,8 @@ import torchvision.transforms.functional as F
 
 import csv
 from PIL import Image
+import albumentations as A
+from albumentations.pytorch import ToTensorV2
 
 class FoodDataset(data.Dataset):
     '''
@@ -66,7 +68,7 @@ class FoodDataset(data.Dataset):
         '''
         Open an image and apply the transform
         
-        Return Tensor of tthe image
+        Return Tensor of the image
         '''
         
         if self.root is not None :
@@ -144,7 +146,7 @@ class FoodDatasetWithMasks(data.Dataset):
             for img_path, *label in csv_reader:
                 self.datalist.append((
                     img_path,
-                    list(int(i) for i in label)
+                    [int(i) for i in label]
                 ))
         
         self.root = root
@@ -153,35 +155,17 @@ class FoodDatasetWithMasks(data.Dataset):
         
         #print(self.datalist)
 
-    def _get_image(self, img_path: str) -> torch.Tensor:
-        '''
-        Open an image and apply the transform
-        '''
-        
-        if self.root is not None :
-            img_path = os.path.join(self.root, img_path)
-        img = Image.open(img_path).convert("RGB")
-        img = self.transform(img)
-        
-        # Add 3 extra channels for HSV
-        if self.add_hsv :
-            img_hsv = img.convert("HSV")
-            img_hsv = self.transform(img_hsv)
-            img = torch.vstack((img, img_hsv))
-
-        return img
-    
     def _get_segment(self, seg_path: str) -> np.ndarray :
-            '''
-            Open sam segments from .npz file
-            '''
-            
-            if self.sam_dir is not None :
-                seg_path = os.path.relpath(seg_path, "Database")
-                seg_path = os.path.join(self.sam_dir, seg_path)
-            seg_path = seg_path + ".npz"
-            seg = np.load(seg_path)["arr_0"]
-            return seg
+        '''
+        Open sam segments from .npz file
+        '''
+        
+        if self.sam_dir is not None :
+            seg_path = os.path.relpath(seg_path, "Database")
+            seg_path = os.path.join(self.sam_dir, seg_path)
+        seg_path = seg_path + ".npz"
+        seg = np.load(seg_path)["arr_0"]
+        return seg
         
     def __getitem__(self, index: int) -> "tuple[torch.Tensor, torch.Tensor, np.ndarray]" :
         '''
@@ -194,8 +178,34 @@ class FoodDatasetWithMasks(data.Dataset):
         '''
         
         img_path, label = self.datalist[index]
-        img = self._get_image(img_path)
-        seg = self._get_segment(img_path)
+        # img = self._get_image(img_path)
+        if self.root is not None:
+            img_path_full = os.path.join(self.root, img_path)
+        else:
+            img_path_full = img_path
+
+        # Read mask
+        img = np.array(Image.open(img_path_full).convert("RGB"))
+        seg = self._get_segment(img_path).astype(np.uint8)
+        seg_img = seg
+
+        # Albumentations transform
+        if self.transform:
+            # Apply transformation
+            transformed = self.transform(image=img, mask=seg_img)
+            img, seg = transformed["image"], transformed["mask"]
+            
+            # Normalization and converting to Tensor
+            transform_to_tensor_img = A.Compose([
+                A.Normalize(mean=[0.485,0.456,0.406], std=[0.229,0.224,0.225]),
+                ToTensorV2()
+            ])
+            transform_to_tensor_seg = A.Compose([ # Segment does not need normalization
+                ToTensorV2()
+            ])
+
+            img = transform_to_tensor_img(image=img)["image"]
+            seg = transform_to_tensor_seg(image=seg)["image"][0] # Segment does not need dimension of batch
         
         return img, torch.tensor(label), seg
     

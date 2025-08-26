@@ -29,6 +29,8 @@ test/
 test results/
 cam results/
 pretrained
+code_ian
+code_kevin
 sam*
 
 Database/*
